@@ -50,7 +50,7 @@ monitor.py 실행 → 5분마다 자동으로:
 ### 설치
 
 ```bash
-pip install psutil requests --break-system-packages
+pip install psutil requests
 ```
 
 ---
