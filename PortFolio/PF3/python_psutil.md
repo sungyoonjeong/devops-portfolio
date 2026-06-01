@@ -651,4 +651,3 @@ git push origin main
 
 ---
 
-*DevOps Python 완전 정리 — PF3 서버 모니터링 시스템 — 2026.06.01*
