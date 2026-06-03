@@ -19,7 +19,7 @@ from logging.handlers import RotatingFileHandler  # 로그 파일 크기 제한 
 
 # Slack Webhook URL: Slack에서 발급받은 주소를 여기에 입력
 # 이 URL로 POST 요청을 보내면 Slack 채널에 메시지가 옴
-SLACK_WEBHOOK = "내 슬랙 url"
+SLACK_WEBHOOK = "https://hooks.slack.com/services/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"
 
 # 임계값: 이 수치를 초과하면 Slack 알림 발송
 CPU_THRESHOLD    = 80.0  # CPU 사용률이 80% 넘으면 알림
