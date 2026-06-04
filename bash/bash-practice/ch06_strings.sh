@@ -18,12 +18,9 @@ name="devops"
 echo ${name^^}        # DEVOPS (전부 대문자)
 echo ${name^}         # Devops (첫 글자만 대문자)
 
-# 빈 문자열 확인
-empty=""
-if [ -z "$empty" ]; then
-    echo "빈 문자열"
-fi
+# 앞뒤 제거
+path="/var/log/app.log"
+echo ${path##*/}          # app.log (경로 제거)
+echo ${path%.log}         # /var/log/app (확장자 제거)
+echo ${path%/*}           # /var/log (파일명 제거)
 
-if [ -n "$str" ]; then
-    echo "비어있지 않음"
-fi

@@ -12,4 +12,9 @@ echo "모든 인수: $@"        # 모든 인수
 # 실제 사용 예
 server=$1
 threshold=$2
+
+# 인수 없으면 기본값
+server=${1:-"localhost"}
+threshold=${2:-80}
+
 echo "$server 의 임계값: $threshold%"

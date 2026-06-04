@@ -10,6 +10,11 @@ for i in {1..5}; do
     echo "번호: $i"
 done
 
+# 범위 + 증가 (2씩)
+for i in {0..10..2}; do
+    echo $i    # 0 2 4 6 8 10
+done
+
 # for 루프 — C스타일
 for (( i=0; i<5; i++ )); do
     echo "i = $i"
@@ -21,6 +26,17 @@ while [ $count -lt 3 ]; do
     echo "카운트: $count"
     (( count++ ))
 done
+
+# 무한 루프 (모니터링)
+while true; do
+    echo "서버 체크 중..."
+    sleep 60    # 60초 대기
+done
+
+# 파일 한 줄씩 읽기
+while read line; do
+    echo "줄: $line"
+done < input.txt
 
 # 파일 목록 순회
 for file in /var/log/*.log; do

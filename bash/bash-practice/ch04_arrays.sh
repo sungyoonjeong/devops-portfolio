@@ -14,6 +14,10 @@ echo ${servers[@]}   # web-01 web-02 db-01 cache-01
 # 배열 길이
 echo ${#servers[@]}  # 4
 
+# 요소 추가
+servers+=("api-01")
+echo ${#servers[@]} # 5
+
 # 배열 순회
 for server in "${servers[@]}"; do
     echo "서버: $server"
