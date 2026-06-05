@@ -10,7 +10,7 @@ check_server() {
     # CPU 사용률 가져오기 (실제 명령어)
     cpu=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | cut -d'%' -f1)
     echo "CPU: $cpu%"
-
+su
     if (( $(echo "$cpu > $threshold" | bc -l) )); then
         echo "🔴 임계값 초과!"
         return 1   # 실패 반환
