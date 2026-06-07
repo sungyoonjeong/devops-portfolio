@@ -1,8 +1,0 @@
-__pycache__/
-*.pyc
-*.pyo
-.mypy_cache/
-*.log
-*.tar.gz
-*.zip
-.env
