@@ -1068,6 +1068,7 @@ aws s3 cp s3://[본인의-고유한-버킷-이름]/index.php /var/www/html/index
 systemctl start httpd
 systemctl enable httpd
 
+```
 
 # AWS 기초 강좌 21: Amazon S3 Storage Class 요약 노트
 
