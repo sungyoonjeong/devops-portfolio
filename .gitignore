@@ -1,4 +1,30 @@
+# AWS 빌드 산출물
 aws/dist/
+
+# 컨텍스트 파일 (취업준비 개인자료)
 context.html
 context_files/
 취업준비2026/
+
+# 진행관리 도구 (이론 무관)
+PROGRESS.md
+backup/
+dashboard.py
+slack_notify.py
+sync-progress.sh
+auto_day.py
+.analysis.md
+
+# PF3 런타임 산출물
+PortFolio/PF3/monitor.log
+PortFolio/PF3/monitor_bash.log
+PortFolio/PF3/report.txt
+
+# 컴파일된 바이너리 (소스코드만 추적)
+Network/network-project1/myserver_partA
+Network/network-project1/myserver_partB
+
+# 기타
+__pycache__/
+*.pyc
+.DS_Store
