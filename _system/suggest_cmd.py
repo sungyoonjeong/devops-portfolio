@@ -14,6 +14,16 @@ PROGRESS_FILE = Path("/home/jsy/devops-portfolio/_system/PROGRESS.md")
 SKIP_FILE     = Path("/home/jsy/devops-portfolio/_system/skip_suggestions.json")
 
 
+
+def safe_write(path, text: str):
+    dir_ = os.path.dirname(str(path))
+    with tempfile.NamedTemporaryFile("w", dir=dir_, suffix=".tmp",
+                                     delete=False, encoding="utf-8") as f:
+        f.write(text)
+        tmp = f.name
+    os.replace(tmp, str(path))
+
+
 def load_skip() -> list[str]:
     try:
         return json.loads(SKIP_FILE.read_text(encoding="utf-8")) if SKIP_FILE.exists() else []
@@ -150,7 +160,7 @@ NEW_ROW|{tech}|⬜|[목표일 범위]
         print(f"  {new_row}")
         sys.exit(1)
 
-    PROGRESS_FILE.write_text("\n".join(new_lines), encoding="utf-8")
+    safe_write(PROGRESS_FILE, "\n".join(new_lines))
     print(f"\n  → PROGRESS.md 커리큘럼에 추가됨: {new_row}")
     print(f"  → `dash` 명령으로 업데이트된 커리큘럼 확인\n")
 

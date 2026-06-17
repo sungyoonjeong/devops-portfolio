@@ -4,7 +4,37 @@ import subprocess
 from datetime import date, timedelta
 from pathlib import Path
 
+PROGRESS_FILE = Path("/home/jsy/devops-portfolio/_system/PROGRESS.md")
+REPO_DIR      = "/home/jsy/devops-portfolio"
+
 WEEKDAYS = ["월", "화", "수", "목", "금", "토", "일"]
+
+
+def _auto_commit_progress(today: date):
+    """PROGRESS.md 일일 자동 커밋 (변경 있을 때만)"""
+    try:
+        # 변경 여부 확인
+        status = subprocess.run(
+            ["git", "-C", REPO_DIR, "status", "--porcelain",
+             str(PROGRESS_FILE)],
+            capture_output=True, text=True
+        )
+        if not status.stdout.strip():
+            return  # 변경 없으면 커밋 안 함
+
+        subprocess.run(
+            ["git", "-C", REPO_DIR, "add", str(PROGRESS_FILE)],
+            capture_output=True
+        )
+        msg = f"auto: PROGRESS.md {today.strftime('%Y-%m-%d')} 일일 업데이트"
+        subprocess.run(
+            ["git", "-C", REPO_DIR, "commit", "-m", msg],
+            capture_output=True
+        )
+        print(f"   → PROGRESS.md 자동 커밋 완료 (push는 post-commit hook이 처리)")
+    except Exception as e:
+        print(f"   [auto_commit] 실패: {e}")
+
 
 
 def main():
@@ -29,6 +59,9 @@ def main():
             stdout=logf, stderr=subprocess.STDOUT,
             start_new_session=True
         )
+
+    # PROGRESS.md 자동 커밋 + push
+    _auto_commit_progress(today)
 
     tomorrow_str = f"{tomorrow.month}/{tomorrow.day}({WEEKDAYS[tomorrow.weekday()]})"
     print(f"✅ {today.month}/{today.day} 일과 마무리")

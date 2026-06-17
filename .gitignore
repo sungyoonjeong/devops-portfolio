@@ -12,6 +12,7 @@ _system/backup/
 _system/job_notes/
 _system/__pycache__/
 _system/.analysis.md
+_system/job_manifest.json
 
 # PF3 런타임 산출물
 PortFolio/PF3/monitor.log
