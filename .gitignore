@@ -6,8 +6,12 @@ context.html
 context_files/
 취업준비2026/
 
-# 시스템 관리 폴더 전체 (진도·대시보드·분석 파일)
-_system/
+# 시스템 폴더: 개인 데이터·캐시는 제외, 스크립트는 추적
+_system/PROGRESS.md
+_system/backup/
+_system/job_notes/
+_system/__pycache__/
+_system/.analysis.md
 
 # PF3 런타임 산출물
 PortFolio/PF3/monitor.log
