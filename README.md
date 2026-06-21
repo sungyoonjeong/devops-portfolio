@@ -8,13 +8,13 @@
 
 ## 포트폴리오 프로젝트
 
-| 프로젝트 | 기술 스택 | 설명 |
-|---------|----------|------|
-| [PF3 — 서버 모니터링 시스템](PortFolio/PF3/) | `Python` `psutil` `Logging` | CPU/메모리/디스크 수집 + 로그 분석 리포트 자동화 |
-| PF2 — 배포 자동화 파이프라인 | `Go` `Docker` `Bash` `AWS ECR` | Go API 서버 멀티스테이지 빌드 + Bash 자동 배포 (진행 중) |
-| PF-IaC — AWS 인프라 자동화 | `Terraform` `Ansible` `AWS` | VPC+EC2+RDS 3-tier IaC + Ansible 초기설정 플레이북 (예정) |
-| PF-K8s — K8s 앱 운영 | `Kubernetes` `Helm` `RBAC` | HPA + Ingress + NetworkPolicy + Helm Chart 패키징 (예정) |
-| **PF1 — End-to-End DevOps 파이프라인** | `GitHub Actions` `ArgoCD` `Prometheus` `Grafana` `Terraform` | 코드 push → CI → Docker 빌드 → GitOps 자동배포 → 모니터링 (예정) |
+| 프로젝트 | 기술 스택 | 설명 | 상태 |
+|---------|----------|------|------|
+| [PF3 — 서버 모니터링 시스템](PortFolio/PF3/) | `Python` `psutil` `Logging` | CPU/메모리/디스크 수집 + 로그 분석 리포트 자동화 | ✅ 완료 |
+| [PF2 — Go + Docker 배포 자동화](PortFolio/PF2/) | `Go` `Docker` `Docker Compose` `nginx` `Trivy` `Bash` | Go API 서버 멀티스테이지 빌드 + Trivy 보안 스캔 + Bash 자동 배포 | ✅ 완료 |
+| [PF-IaC — AWS 인프라 자동화](PortFolio/PF-IaC/) | `Terraform` `Ansible` `AWS` `LocalStack` | VPC+EC2+RDS 3-tier IaC + Ansible 초기설정 플레이북 | 🔄 예정 |
+| [PF-K8s — Kubernetes 앱 운영](PortFolio/PF-K8s/) | `Kubernetes` `Helm` `Nginx Ingress` `RBAC` `HPA` | HPA + Ingress + NetworkPolicy + Helm Chart 패키징 | 🔄 예정 |
+| [**PF1 — End-to-End DevOps 파이프라인**](PortFolio/PF1/) | `GitHub Actions` `ArgoCD` `Prometheus` `Grafana` `Terraform` | 코드 push → CI → Docker 빌드 → GitOps 자동배포 → 모니터링 | 🔄 예정 |
 
 ---
 
