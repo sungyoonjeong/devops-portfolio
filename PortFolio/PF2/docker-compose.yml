@@ -1,0 +1,23 @@
+services:
+
+  # app: Go HTTP 서버 컨테이너
+  # 외부에서 직접 접근 불가 — nginx를 통해서만 트래픽이 들어온다 (보안 설계)
+  app:
+    build: .                  # 현재 디렉토리의 Dockerfile로 이미지 빌드
+    expose:
+      - "8080"                # 도커 내부 네트워크에만 8080 노출 (호스트에는 미노출)
+    restart: unless-stopped   # 컨테이너 크래시 시 자동 재시작, 단 docker stop은 재시작 안 함
+
+  # nginx: 리버스프록시 컨테이너
+  # 클라이언트 → nginx:80 → app:8080 흐름으로 중간에서 라우팅·로드밸런싱 담당
+  nginx:
+    image: nginx:alpine       # 경량 nginx 이미지 (alpine 기반, 약 40MB)
+    ports:
+      - "80:80"               # 호스트 80 포트 → nginx 컨테이너 80 포트 바인딩 (외부 노출)
+    volumes:
+      # 커스텀 nginx 설정파일을 컨테이너 내부에 읽기전용으로 마운트
+      # :ro = read-only, 컨테이너가 설정을 임의로 수정하지 못하도록 보호
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - app                   # app 컨테이너가 먼저 시작된 후 nginx 시작 (시작 순서 보장)
+    restart: unless-stopped
