@@ -347,16 +347,19 @@ provider "aws" {
   skip_credentials_validation = true
   skip_metadata_api_check     = true
   skip_requesting_account_id  = true
+  s3_use_path_style           = true   # LocalStack 필수 — 없으면 DNS 에러 발생
 
   endpoints {
-    s3      = "http://localhost:4566"
-    ec2     = "http://localhost:4566"
-    iam     = "http://localhost:4566"
-    sts     = "http://localhost:4566"
-    vpc     = "http://localhost:4566"
+    s3       = "http://localhost:4566"
+    ec2      = "http://localhost:4566"
+    iam      = "http://localhost:4566"
+    sts      = "http://localhost:4566"
     dynamodb = "http://localhost:4566"
   }
 }
+# s3_use_path_style 이유:
+# 기본(가상호스트): http://bucket-name.localhost:4566/ → DNS 못 찾아서 에러
+# path-style 강제: http://localhost:4566/bucket-name  → LocalStack 정상 처리
 ```
 
 ### D1 실습: 첫 S3 버킷
