@@ -988,29 +988,143 @@ terraform/
 
 ## 12. 면접 Q&A
 
-**Q. Terraform State란 무엇인가요?**
+> 외우는 게 아니라 **입으로 말할 수 있는지** 확인하는 용도. 각 답변을 보지 않고 30초~1분 안에 설명해볼 것.
 
-Terraform이 실제 인프라와 코드 사이를 매핑하는 파일입니다. `terraform plan` 시 코드(원하는 상태)와 state(현재 상태)를 비교해 변경이 필요한 부분만 계산합니다. 팀 환경에서는 S3 backend + DynamoDB 락으로 동시 apply 충돌을 방지합니다.
+---
+
+### 기초 개념
+
+**Q. Terraform이 뭔가요? 한 문장으로 설명해보세요.**
+
+인프라를 코드(.tf 파일)로 선언하면 `terraform apply` 한 번으로 AWS 리소스를 자동 생성·변경·삭제해주는 IaC 도구입니다.
 
 **Q. IaC를 써야 하는 이유는?**
 
-인프라를 코드로 관리하면 git을 통한 변경 이력 추적, 코드 리뷰로 실수 사전 방지, 동일 환경 반복 재현이 가능합니다. 특히 dev/stg/prod 환경을 동일하게 유지하거나 장애 시 인프라를 빠르게 재구성할 때 효과적입니다.
+AWS 콘솔 클릭으로 만든 인프라는 재현이 안 되고, 협업이 어렵고, 변경 이력이 없습니다. Terraform은 코드로 관리하므로 git으로 이력 추적, 코드 리뷰로 실수 방지, 동일 환경 반복 재현이 가능합니다. 특히 dev/stg/prod를 동일하게 유지하거나 장애 시 인프라를 빠르게 재구성할 때 강력합니다.
 
-**Q. terraform plan에서 무엇을 확인하나요?**
+**Q. Terraform은 선언형이라고 하는데 무슨 뜻인가요?**
 
-생성(+) / 수정(~) / 삭제(-) 대상 리소스와 변경 속성을 확인합니다. 특히 `forces replacement` 표시가 있으면 삭제 후 재생성이므로 운영 환경에서는 다운타임 영향을 검토해야 합니다. "Plan: X to add, Y to change, Z to destroy" 요약도 반드시 확인합니다.
+"EC2를 만들어라 → 완료 기다려라 → 보안그룹 연결해라" 처럼 순서와 절차를 명시하는 게 명령형입니다. Terraform은 "EC2와 보안그룹이 이런 상태여야 한다"고 결과만 선언하면, 현재 상태와 비교해서 필요한 작업을 알아서 실행합니다. 개발자가 순서나 에러 처리를 신경 쓸 필요가 없습니다.
+
+**Q. Provider가 뭔가요?**
+
+Terraform 자체는 AWS API를 모릅니다. `hashicorp/aws` Provider가 AWS API 호출법을 알고 있는 플러그인이고, `terraform init` 시 다운로드됩니다. Azure를 쓰려면 Provider만 바꾸면 됩니다.
+
+**Q. resource 블록에서 인자가 두 개인데 각각 뭔가요?**
+
+```hcl
+resource "aws_s3_bucket" "practice" { ... }
+```
+첫 번째 `"aws_s3_bucket"`은 Provider가 정의한 리소스 타입이고, 두 번째 `"practice"`는 Terraform 코드 내부 식별자입니다. 다른 곳에서 `aws_s3_bucket.practice.id` 처럼 참조할 때 씁니다. AWS 리소스 이름과는 무관합니다.
+
+---
+
+### 워크플로우
+
+**Q. terraform init이 하는 일은?**
+
+Provider 플러그인을 다운로드해서 `.terraform/` 폴더에 저장하고, `.terraform.lock.hcl` 파일을 생성해 버전을 고정합니다. 코드를 처음 작성하거나 Provider를 변경할 때 실행합니다.
+
+**Q. terraform plan과 apply 차이는?**
+
+`plan`은 변경사항을 미리보기만 하고 실제 AWS 리소스는 건드리지 않습니다. `apply`는 plan을 실행해서 실제로 리소스를 생성·변경·삭제합니다. 운영 환경에서는 반드시 plan 결과를 팀이 검토한 후 apply하는 프로세스를 씁니다.
+
+**Q. plan 출력에서 `(known after apply)`가 뭔가요?**
+
+S3 버킷 ARN이나 EC2 인스턴스 ID처럼 실제로 리소스가 생성된 후에야 AWS가 알려주는 값입니다. plan 단계에서는 아직 리소스가 없으므로 알 수 없고, apply 완료 후 tfstate에 기록됩니다.
+
+**Q. terraform destroy는 언제 쓰나요?**
+
+관리되는 모든 리소스를 삭제합니다. 실습 환경 정리나 임시 인프라 제거에 씁니다. 운영 환경에서는 특정 리소스만 삭제하려면 `terraform destroy -target=리소스명`을 씁니다.
+
+**Q. .terraform.lock.hcl은 왜 있나요?**
+
+`init` 시 선택된 Provider 버전을 고정해두는 파일입니다. 팀원이 같은 버전을 쓰도록 보장하기 위해 git에 커밋합니다. `package-lock.json`이나 `go.sum`과 같은 역할입니다.
+
+**Q. .gitignore에 .terraform/을 넣는 이유는?**
+
+`.terraform/` 폴더는 Provider 바이너리(수백 MB)가 들어있어서 git에 올리면 안 됩니다. 각자 `terraform init`으로 다운로드하면 됩니다. `terraform.tfstate`는 민감한 리소스 정보(비밀번호, 키 등)가 평문으로 들어있어서 역시 git에 올리면 안 됩니다.
+
+---
+
+### State
+
+**Q. Terraform State란 무엇인가요?**
+
+Terraform이 실제 인프라와 코드 사이를 매핑하는 파일(`terraform.tfstate`)입니다. `plan` 시 코드(원하는 상태)와 state(현재 상태)를 비교해 차이만 변경합니다. State가 없으면 Terraform은 AWS에 이미 뭐가 있는지 알 수 없습니다.
+
+**Q. tfstate 파일을 git에 올리면 안 되는 이유는?**
+
+DB 비밀번호, API 키, 인증서 등 민감한 정보가 평문 JSON으로 저장됩니다. git에 올리면 이력에 영구적으로 남고, 팀원이 동시에 apply할 때 파일 충돌도 발생합니다.
+
+**Q. Remote State를 왜 쓰나요?**
+
+로컬 tfstate는 혼자 쓸 때는 괜찮지만 팀 환경에서는 두 사람이 동시에 apply하면 state 파일이 덮어써지는 충돌이 납니다. S3에 저장하고 DynamoDB로 락을 걸면, 한 사람이 apply 중일 때 다른 사람은 락이 해제될 때까지 대기합니다.
+
+**Q. terraform import가 뭔가요?**
+
+Terraform 없이 콘솔 클릭으로 이미 만들어진 리소스를 Terraform으로 관리하고 싶을 때, 그 리소스를 tfstate에 편입시키는 명령입니다. import 후 코드도 그에 맞게 작성해야 합니다.
+
+---
+
+### 구조·설계
 
 **Q. Module을 왜 사용하나요?**
 
-반복되는 인프라 패턴(VPC+서브넷+IGW 조합 등)을 재사용 가능한 단위로 캡슐화합니다. dev/stg/prod 환경에서 같은 모듈을 다른 변수로 호출해 일관성을 유지하고, 변경 시 모듈만 수정하면 모든 환경에 반영됩니다.
-
-**Q. Terraform과 CloudFormation 차이는?**
-
-CloudFormation은 AWS 전용이고 YAML/JSON으로 작성합니다. Terraform은 HCL이 더 직관적이고, 단일 코드베이스로 AWS + Kubernetes + 모니터링 인프라까지 함께 관리할 수 있습니다. 단, CloudFormation은 AWS 서비스와 더 깊이 통합되어 있고 State 관리가 AWS에서 자동으로 처리됩니다.
+반복되는 인프라 패턴(VPC+서브넷+IGW 조합 등)을 재사용 가능한 단위로 캡슐화합니다. dev/stg/prod 각 환경에서 같은 모듈을 다른 변수로 호출해 일관성을 유지하고, 변경이 필요하면 모듈 내부만 수정하면 모든 환경에 반영됩니다.
 
 **Q. count vs for_each 언제 각각 사용하나요?**
 
-`count`는 순서가 있는 리스트에 적합하지만, 중간 요소가 삭제되면 인덱스가 밀려 이후 리소스가 재생성됩니다. `for_each`는 map/set 기반으로 각 리소스가 고유한 키로 식별돼 중간 삭제 시에도 다른 리소스에 영향이 없습니다. 실무에서는 `for_each` 권장.
+`count`는 숫자 기반이라 중간 요소가 삭제되면 인덱스가 밀려 이후 리소스가 재생성됩니다. `for_each`는 map/set 기반으로 각 리소스가 고유한 키로 식별돼 중간 삭제 시 다른 리소스에 영향이 없습니다. 실무에서는 `for_each` 권장합니다.
+
+**Q. variable과 local의 차이는?**
+
+`variable`은 외부에서 값을 주입받는 입력 인터페이스입니다 (tfvars, -var 플래그). `local`은 코드 내부에서만 쓰는 중간 계산값으로, 반복되는 표현식을 한 곳에서 관리할 때 씁니다. 외부에서 바꿀 수 없습니다.
+
+**Q. data source가 resource와 다른 점은?**
+
+`resource`는 Terraform이 직접 생성·관리하는 리소스입니다. `data`는 이미 존재하는 리소스를 읽어오기만 하고 생성하지 않습니다. 예를 들어 최신 Amazon Linux AMI ID를 하드코딩 대신 `data.aws_ami`로 자동 조회하면 항상 최신 버전을 씁니다.
+
+**Q. Terraform과 CloudFormation 차이는?**
+
+CloudFormation은 AWS 전용이고 YAML/JSON으로 작성합니다. Terraform은 HCL이 더 직관적이고, AWS + Kubernetes + 모니터링 인프라를 단일 코드베이스로 관리할 수 있습니다. 단, CloudFormation은 AWS 서비스와 더 깊이 통합되어 있고 State를 AWS가 자동으로 관리합니다.
+
+---
+
+### 실무 트러블슈팅
+
+**Q. LocalStack에서 S3 생성 시 DNS 에러가 났는데 원인과 해결법은?**
+
+S3의 기본 URL 방식은 가상 호스트 스타일(`http://버킷명.localhost:4566/`)인데, `버킷명.localhost`를 DNS가 찾지 못해서 에러가 납니다. Provider에 `s3_use_path_style = true`를 추가하면 `http://localhost:4566/버킷명` 형식으로 바뀌어 LocalStack이 정상 처리합니다.
+
+**Q. terraform apply 했는데 이미 AWS에 같은 리소스가 있다면?**
+
+State에 없는 리소스는 Terraform이 모르기 때문에 새로 만들려다가 "already exists" 에러가 납니다. `terraform import`로 기존 리소스를 state에 편입한 후 코드와 맞추면 됩니다.
+
+**Q. plan에서 `-/+` 표시가 나왔는데 무슨 의미인가요?**
+
+삭제 후 재생성(`forces replacement`)을 의미합니다. 수정이 아니라 리소스를 지우고 새로 만드는 것이므로 운영 중인 EC2라면 다운타임이 발생합니다. 이 경우 `create_before_destroy` lifecycle 설정으로 새 것을 먼저 만들고 기존 것을 삭제하는 방식으로 다운타임을 줄일 수 있습니다.
+
+---
+
+## 13. D1 자가 점검 (실습 직후 확인용)
+
+> 아래 질문에 답하지 못하면 TERRAFORM_STUDY.md 해당 섹션 다시 읽기.
+
+```
+Q1. terraform init / plan / apply / destroy를 각각 언제 실행하나요?
+Q2. resource "aws_s3_bucket" "practice"에서 "practice"의 역할은?
+Q3. plan 출력에서 (known after apply)가 뜨는 이유는?
+Q4. s3_use_path_style = true가 왜 필요한가요?
+Q5. .gitignore에 .terraform/을 넣는 이유는?
+Q6. output 블록을 왜 쓰나요?
+Q7. Terraform이 docker-compose와 비슷한 점과 다른 점은?
+```
+
+답변 기준:
+- Q1~Q3: 막힘없이 대답 가능 → D1 이해 완료
+- Q4~Q6: 오늘 실습에서 직접 겪은 내용 → 반드시 설명 가능해야 함
+- Q7: 개념 연결 이해 확인
 
 ---
 
