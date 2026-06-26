@@ -1876,6 +1876,56 @@ Q6. Terraform으로 EC2를 띄운 뒤 그 안에 Docker를 설치하려면? (도
 
 ---
 
+## 13-A. 자가 점검 — 정답·해설
+
+> 위 문항을 **먼저 입으로 답한 뒤** 아래로 채점한다. 솔루션을 봐야 답이 나오면 "이해 못 한 것"으로 친다.
+
+### D1 정답 — provider + S3
+- **Q1.** `init`=작업 디렉터리 초기화(프로바이더·모듈 다운로드, backend 설정) → 맨 처음/프로바이더·모듈·backend가 바뀔 때. `plan`=코드·state·실제를 비교해 생성/수정/삭제 미리보기 → apply 전 항상. `apply`=plan의 변경을 실제 인프라에 반영. `destroy`=코드로 만든 리소스 전부 삭제(실습·임시환경 정리).
+- **Q2.** "practice"는 **Terraform 내부의 로컬 이름**(식별자). 같은 타입 리소스를 구분하고 `aws_s3_bucket.practice.id`처럼 다른 곳에서 참조할 때 쓴다. AWS에 실제로 붙는 버킷 이름(`bucket = ...`)과는 별개.
+- **Q3.** `(known after apply)`는 그 속성이 **리소스를 실제로 만들기 전엔 알 수 없는 값**(자동 생성되는 id·arn 등)이라서. AWS가 생성 시점에 부여하므로 plan 단계에선 미정으로 표시된다.
+- **Q4.** 기본은 virtual-hosted 방식(`bucket.s3.amazonaws.com`)인데 **LocalStack은 path-style(`localhost:4566/bucket`)만** 지원한다. `s3_use_path_style = true`로 경로 방식을 강제해야 LocalStack과 통신된다.
+- **Q5.** `.terraform/`=프로바이더 바이너리(수백MB)·모듈 캐시라 **재생성 가능 + 용량 커서** 제외. `tfstate`=리소스 ID는 물론 **비밀번호·키가 평문으로** 들어갈 수 있고 협업 시 충돌·유출 위험이라 제외(→ 원격 backend로 관리).
+- **Q6.** `.terraform.lock.hcl`은 프로바이더의 **정확한 버전·체크섬을 고정**한다. 커밋해두면 팀원·CI가 init할 때 같은 버전을 받아 "내 PC에선 됐는데" 류 불일치를 막는다.
+- **Q7.** 비슷: 둘 다 선언형 파일로 정의하고 명령 한 번으로 띄움. 다름: docker-compose는 **한 호스트의 컨테이너** 구성, Terraform은 **클라우드 리소스 전반**(VPC·EC2·IAM…)을 **state 기반**으로 생성·변경·삭제하고 드리프트를 plan으로 감지.
+
+### D2 정답 — Variables · Outputs · Modules
+- **Q1.** 주입 방법과 우선순위(높음→낮음): **`-var`/`-var-file`(CLI) → `*.auto.tfvars`(알파벳순) → `terraform.tfvars` → 환경변수 `TF_VAR_*` → `default`**. 위가 아래를 덮는다.
+- **Q2.** `variable`=외부에서 주입하는 **입력**(호출자가 바꿀 수 있음). `local`=모듈 내부에서만 쓰는 **계산된 이름값**(외부에서 못 바꿈, 반복 식 재사용). 받을 값은 variable, 코드 안에서 조합·반복되는 값은 local.
+- **Q3.** ① apply 후 **사람이 결과(ID 등)를 확인**, ② 모듈 내부 값을 **외부(루트·다른 모듈)로 노출**해 연결하거나 다른 도구(Ansible 등)가 읽게 함.
+- **Q4.** 모듈=함수. **입력=variable, 출력=output, 호출=`module` 블록**(`source`로 가리키고 인자 전달). 같은 모듈을 다른 인자로 여러 번 호출해 재사용.
+- **Q5.** `module.vpc.public_subnet_ids[0]` = **vpc라는 이름의 모듈**이 내보낸 **output `public_subnet_ids`(리스트)**의 **첫 번째(`[0]`) 원소** = 첫 퍼블릭 서브넷 ID.
+- **Q6.** `terraform init`. 모듈을 추가하거나 `source`를 바꾸면 모듈을 새로 받아와야 하므로 재실행 필요(안 하면 "module not installed" 에러).
+- **Q7.** **for_each 권장.** count는 리스트 인덱스 기반이라 중간 항목을 지우면 뒤 항목들의 인덱스가 밀려 재생성/삭제되는 부작용이 있다. for_each는 키(맵/셋) 기반이라 각 리소스가 안정적 식별자를 가져 중간 삭제에도 다른 리소스가 안 흔들린다.
+
+### D3 정답 — State · Backend · Workspace
+- **Q1.** 세 상태: ① **코드**(.tf, 원하는 상태) ② **state 파일**(Terraform이 마지막으로 안 상태) ③ **실제 인프라**(클라우드 현재). plan은 이 셋을 비교한다.
+- **Q2.** 드리프트=state와 실제 인프라가 어긋난 것(누가 콘솔에서 수동 변경). 감지=`plan`/`refresh`가 차이를 보여줌. 되돌리기=`apply`로 코드 기준으로 덮거나, 정당한 변경이면 코드나 `ignore_changes`에 반영.
+- **Q3.** ① **민감정보 평문 노출**(비밀번호·키), ② 동시 작업 시 **락 부재로 충돌·state 손상**. → 원격 backend(S3)+DynamoDB 락.
+- **Q4.** Remote State 이유: 팀이 **같은 state를 공유**(로컬 파일은 1인용), 유실 위험↓, 암호화·접근제어. 락: 두 명이 동시에 apply하면 state가 깨지므로 **DynamoDB 락으로 한 번에 한 명만** 쓰게 직렬화(동시성 제어).
+- **Q5.** local backend는 state를 **내 PC 파일**에, s3 backend는 state를 **S3(원격)에 두고 DynamoDB로 락** → 협업·안전.
+- **Q6.** `workspace`=같은 코드·같은 backend에서 **state만 분리**(dev/prod 빠른 전환, 작은 차이). **환경별 폴더 분리**=환경마다 코드·backend·변수를 완전히 따로(권한·구성이 크게 다를 때, 실수 격리). 실무 운영환경은 폴더 분리를 더 선호.
+- **Q7.** 코드에서 리소스 블록을 지우면 다음 `apply` 때 Terraform이 "코드에 없으니 지워야 함"으로 보고 **실제 인프라에서 destroy**한다(state엔 있고 코드엔 없으면 삭제 대상).
+
+### D4 정답 — IAM · Security Group · 네트워크
+- **Q1.** **라우팅.** 서브넷이 `0.0.0.0/0 → IGW` 라우트를 가진 라우트테이블에 연결되면 **Public**, 그런 외부 경로가 없으면 **Private**(+ `map_public_ip_on_launch` 여부).
+- **Q2.** `ingress`=인바운드(밖→리소스로 **들어오는** 허용 규칙), `egress`=아웃바운드(리소스→밖으로 **나가는** 허용). SG는 기본 전부 차단이고 허용만 명시한다.
+- **Q3.** IP(CIDR)는 바뀌거나 너무 넓어질 수 있지만, **"web SG에서 온 트래픽만"**으로 묶으면 IP를 몰라도 특정 역할의 서버만 정확히 허용 → 더 안전하고 유지보수가 쉽다.
+- **Q4.** **Role**=권한을 담는 역할, **Policy**=그 역할에 붙는 구체 권한 문서(S3 읽기 등), **Instance Profile**=Role을 EC2에 실제로 부착하는 연결 고리. 흐름: EC2 → Instance Profile → Role → Policy.
+- **Q5.** AssumeRole=사람·서비스가 자기 권한이 아니라 **역할을 잠시 빌려** 그 권한으로 행동하는 것. EC2는 액세스키를 안에 박지 않고 인스턴스 프로파일을 통해 Role을 AssumeRole → **임시 자격증명**으로 S3 등에 접근(키리스, 더 안전).
+- **Q6.** `create_before_destroy`=교체 시 **새것 먼저 만들고** 기존 삭제 → 다운타임 최소화. `prevent_destroy`=운영 DB·S3처럼 **삭제되면 안 되는** 리소스의 destroy를 plan에서 차단.
+- **Q7.** Provisioner(remote-exec 등)는 **명령형이라 멱등성·예측성이 깨지고** 실패 시 tainted로 꼬인다. 대신 간단 초기화는 `user_data`, 서버 구성은 **Ansible 같은 구성관리 도구**.
+
+### D5 정답 — 통합·정리
+- **Q1.** 역할별로 나눠 **가독성·유지보수↑**(어디를 고칠지 명확), 협업 충돌↓, 컨벤션 표준화. main(리소스·모듈호출)·variables(입력)·outputs(출력)·locals(공통계산)·versions(프로바이더 버전 고정).
+- **Q2.** 환경값(`environment`/`workspace`)을 변수로 받아 `instance_type`을 **맵 조회나 삼항(`prod ? large : micro`)으로 분기**. `dev.tfvars`/`prod.tfvars` 또는 workspace로 값만 바꿔 apply.
+- **Q3.** `plan -out`은 그 시점 확정한 변경을 **파일로 저장해 그대로 apply** → plan과 apply 사이에 코드·인프라가 바뀌어도 "본 것과 다른 게 적용되는" 사고를 막는다(특히 CI에서 승인-적용 분리).
+- **Q4.** `init → fmt`/`validate` → `plan(-out)` → (승인) → `apply`. (+ tfsec/checkov 보안 스캔을 plan 전후에)
+- **Q5.** "Terraform으로 VPC·SG·IAM·EC2를 **모듈화**해 코드로 정의하고, state는 **S3 backend+DynamoDB 락**으로 원격 관리, **workspace로 dev/prod를 같은 코드로 분기**했습니다. CI에서 fmt·validate·보안스캔·plan을 거쳐 적용해 인프라를 재현 가능하고 안전하게 만듭니다."
+- **Q6.** 간단하면 **`user_data`** 스크립트로 부팅 시 설치, 본격 구성은 **Ansible**로 분리. Terraform은 인프라 프로비저닝, 서버 내부 설정은 구성관리 도구로 — **역할 분리**가 핵심.
+
+---
+
 ## 일차별 실습 체크포인트
 
 ```
