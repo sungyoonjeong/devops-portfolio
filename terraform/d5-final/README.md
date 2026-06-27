@@ -74,9 +74,35 @@ terraform destroy -auto-approve
 > **RDS 주의**: RDS는 LocalStack 무료판에서 제한적이다(Pro 기능). `validate`/`plan`까지는
 > 문제없고, 실제 `apply`로 DB 인스턴스를 띄우려면 LocalStack Pro 또는 실제 AWS가 필요하다.
 
-## IaC 보안 스캔 (checkov 실측)
+## IaC 보안 스캔 — checkov
 
-PF2의 Trivy(이미지 스캔)와 짝이 되는 **IaC 정적 분석**. 실제로 돌린 결과:
+### checkov란 무엇인가
+
+**checkov**는 Bridgecrew(현 Palo Alto Prisma Cloud)가 만든 **오픈소스 IaC 정적 분석 도구**다.
+Terraform·CloudFormation·Kubernetes·Helm·Dockerfile 같은 "인프라 코드"를 **실제로 배포하기
+전에(shift-left)** 훑어, 보안에 위험한 설정이나 베스트프랙티스 위반을 잡아낸다.
+
+- **정적 분석이란**: 코드를 *실행하지 않고* 텍스트·구조만 읽어서 검사하는 방식.
+  즉 `terraform apply`로 실제 리소스를 만들기 전에, `.tf` 파일만 보고 문제를 찾는다.
+- **어떻게 검사하나**: checkov 안에는 수백 개의 내장 정책(룰)이 있고, 각 룰에 `CKV_AWS_*`
+  같은 ID가 붙어 있다. 코드를 이 룰 목록과 대조해 통과(Passed)/위반(Failed)을 매긴다.
+  예) `CKV_AWS_21`="S3 버킷에 버저닝이 켜져 있나", `CKV_AWS_260`="보안그룹이 0.0.0.0/0에서
+  80포트를 여나", `CKV_AWS_79`="EC2가 IMDSv2를 강제하나".
+- **왜 쓰나**: 잘못된 보안그룹·하드코딩된 비밀번호·과도한 IAM 권한·암호화 누락 같은 실수는
+  배포 *후에* 발견하면 이미 노출된 뒤다. checkov는 이걸 **코드 리뷰/CI 단계에서 미리** 걸러
+  "안전하지 않은 인프라 코드가 머지·배포되는 것"을 막는다.
+- **Trivy와의 차이(짝 관계)**: PF2에서 쓴 **Trivy**는 *빌드된 컨테이너 이미지·패키지*의 알려진
+  취약점(CVE)을 스캔한다. **checkov**는 *IaC 코드 자체의 설정 오류*를 스캔한다. 둘은 보는
+  대상이 달라 서로 보완한다 — "이미지 보안(Trivy) + 인프라 설정 보안(checkov)".
+- **CI 연동**: GitHub Actions 등에서 PR마다 자동 실행해, 위반이 있으면 머지를 막도록 쓴다
+  (PF-IaC에서 적용 예정). 로컬에선 `pip install checkov` 후 `checkov -d .` 한 줄로 끝.
+
+> 한 줄 정의: **"인프라 코드를 배포 전에 검사하는 보안 린터(linter)."**
+> 코드 품질 린터가 문법·스타일을 잡듯, checkov는 인프라의 보안 설정을 잡는다.
+
+### 실측 결과
+
+이 스택을 실제로 스캔한 결과(Trivy와 짝이 되는 **IaC 정적 분석**):
 
 ```bash
 checkov -d . --framework terraform --compact
