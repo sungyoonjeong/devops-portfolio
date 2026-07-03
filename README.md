@@ -1,6 +1,6 @@
 # Sungyoon Jeong | DevOps Engineer Portfolio
 
-> **목표**: DevOps Engineer (1순위) · IT 기술영업 (2순위)  
+> **목표**: DevOps Engineer   
 > **준비 기간**: 2026년 상반기 ~ 9월 하반기 공채  
 > **자격증**: CCNP · AWS Cloud Practitioner (취득) · **AWS SAA · CKA** (2026년 예정)
 
