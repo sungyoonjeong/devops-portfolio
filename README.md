@@ -16,13 +16,16 @@
 
 ---
 
-## 진행 예정 (로드맵)
+## 진행 중 · 로드맵 (2026년 7월)
 
 | 프로젝트 | 기술 스택 | 설명 | 상태 |
 |---------|----------|------|------|
-| [PF-IaC — Terraform + Ansible 연동](PortFolio/PF-IaC/) | `Terraform` `Ansible` `AWS` `LocalStack` | 위 Terraform 스택 위에 Ansible 초기설정(Docker·nginx 설치, 앱 배포) 플레이북 연동 | 🔄 예정 |
-| [PF-K8s — Kubernetes 앱 운영](PortFolio/PF-K8s/) | `Kubernetes` `Helm` `Nginx Ingress` `RBAC` `HPA` | HPA + Ingress + NetworkPolicy + Helm Chart 패키징 | 🔄 예정 |
-| [**PF1 — End-to-End DevOps 파이프라인**](PortFolio/PF1/) | `GitHub Actions` `ArgoCD` `Prometheus` `Grafana` `Terraform` | 코드 push → CI → Docker 빌드 → GitOps 자동배포 → 모니터링 | 🔄 예정 |
+| [PF-IaC — Terraform + Ansible 연동](PortFolio/PF-IaC/) | `Terraform` `Ansible` `AWS` | Terraform 스택 위에 Ansible로 서버 초기설정(Docker·nginx)·앱 배포 자동화 | 🔄 진행 중 |
+| [PF-K8s — Kubernetes 앱 운영](PortFolio/PF-K8s/) | `Kubernetes` `Helm` `Ingress` `RBAC` `HPA` | Deployment·Service·Ingress·HPA·RBAC·NetworkPolicy + Helm 차트 패키징 | 🔄 진행 중 |
+| CI/CD 파이프라인 | `GitHub Actions` `ArgoCD` `Jenkins` `Trivy` | 빌드→테스트→취약점 스캔→푸시 CI + ArgoCD GitOps 배포 | 🔄 진행 중 |
+| 관측성 스택 | `Prometheus` `Grafana` `AlertManager` | 메트릭 수집·통합 대시보드·SLO·Slack 알림 | 🔄 진행 중 |
+| [**PF1 — End-to-End DevOps 파이프라인**](PortFolio/PF1/) | `GitHub Actions` `ArgoCD` `EKS` `Helm` `Terraform` `Prometheus` | 코드 push → CI → 이미지 빌드 → GitOps 자동배포(EKS) → 모니터링 (앱 전주기 통합) | 🔄 예정 |
+| [**★ 캡스톤 — 하이브리드 클라우드 신뢰성 플랫폼**](PortFolio/PF-Hybrid/) | `k3s(On-Prem)` `EKS(AWS)` `WireGuard` `ArgoCD` `Prometheus` `k6` | 온프렘 ↔ AWS 하이브리드 배포 + 장애 시 자동 페일오버 + **MTTR 실측** | 🔄 예정 |
 
 ---
 
@@ -45,6 +48,8 @@
 ![Grafana](https://img.shields.io/badge/Grafana-F46800?style=flat&logo=grafana&logoColor=white)
 ![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?style=flat&logo=github-actions&logoColor=white)
 ![ArgoCD](https://img.shields.io/badge/ArgoCD-EF7B4D?style=flat&logo=argo&logoColor=white)
+![Jenkins](https://img.shields.io/badge/Jenkins-D24939?style=flat&logo=jenkins&logoColor=white)
+![Helm](https://img.shields.io/badge/Helm-0F1689?style=flat&logo=helm&logoColor=white)
 
 ---
 
@@ -60,7 +65,7 @@ awscloud/    VPC·EC2·RDS·IAM·LocalStack 실습 전체
 terraform/   D1~D5 IaC 실습 — 모듈화·원격 state·Workspace·3-tier 통합(d5-final)
 python/      자료구조 38챕터 — 연결리스트·트리·힙·AVL·BIT·Red-Black Tree
 코딩테스트/   프로그래머스 Level 1 완료 (64문제+) → Level 2 진행 중
-PortFolio/   PF1~PF3 포트폴리오 프로젝트
+PortFolio/   PF3·PF2·PF-IaC·PF-K8s·PF1 + ★하이브리드 캡스톤(PF-Hybrid)
 ```
 
 ---
@@ -70,9 +75,9 @@ PortFolio/   PF1~PF3 포트폴리오 프로젝트
 ```
 ✅ CCNP Enterprise
 ✅ AWS Cloud Practitioner
-🔄 AWS SAA-C03          → 2026-07-22 시험
-🔄 OPIc IM              → 2026-07-25 시험
-🔄 CKA                  → 2026-08-05 시험
+🔄 AWS SAA-C03          → 2026년 8월 취득 목표
+🔄 CKA                  → 2026년 8월 취득 목표
+🔄 OPIc IH              → 2026년 8월 취득 목표
 ```
 
 ---
