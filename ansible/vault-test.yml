@@ -1,0 +1,8 @@
+- name: Vault 테스트
+  hosts: web
+  vars_files:
+    - secret.yml
+  tasks:
+    - name: 시크릿이 복호화되어 들어오는지 확인
+      debug:
+        msg: "DB 비번={{ db_password }} / API 키={{ api_key }}"

@@ -1,0 +1,9 @@
+- name: 기본 도구 설치
+  apt:
+    name:
+      - git
+      - htop
+      - curl
+      - vim
+    state: present
+    update_cache: true

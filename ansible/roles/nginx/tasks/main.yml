@@ -1,0 +1,17 @@
+- name: nginx 설치
+  apt:
+    name: nginx
+    state: present
+    update_cache: true
+
+- name: 홈페이지 내용 교체
+  copy:
+    content: "Hello Ansible! 이제 Role로 관리한다\n"
+    dest: /var/www/html/index.nginx-debian.html
+  notify: restart nginx
+
+- name: nginx 기동 + 부팅 시 자동시작
+  service:
+    name: nginx
+    state: started
+    enabled: true
