@@ -1,0 +1,6 @@
+- name: 웹 서버 구성
+  hosts: web
+  become: true
+  roles:
+    - common
+    - nginx
