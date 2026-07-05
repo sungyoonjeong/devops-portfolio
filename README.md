@@ -66,6 +66,7 @@ terraform/   D1~D5 IaC 실습 — 모듈화·원격 state·Workspace·3-tier 통
 ansible/     Ansible 101 정리집 + D1~D4 실습 — 인벤토리·Playbook·Role·Vault(멱등성)
 python/      자료구조 38챕터 — 연결리스트·트리·힙·AVL·BIT·Red-Black Tree
 코딩테스트/   프로그래머스 Level 1 완료 (64문제+) → Level 2 진행 중
+기술면접/     면접 예상질문 Q&A + 리눅스 트러블슈팅 실습 기록
 PortFolio/   PF3·PF2·PF-IaC·PF-K8s·PF1 + ★하이브리드 캡스톤(PF-Hybrid)
 ```
 
