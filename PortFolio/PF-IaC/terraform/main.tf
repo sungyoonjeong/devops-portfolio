@@ -1,5 +1,5 @@
 # =============================================================================
-# devops-portfolio/terraform/pf-IaC/main.tf — 실 AWS에 EC2 1대 프로비저닝 (Ansible 연동 대상)
+# PortFolio/PF-IaC/terraform/main.tf — 실 AWS에 EC2 1대 프로비저닝 (Ansible 연동 대상)
 # D1~D5(LocalStack)와의 차이: provider에 우회 설정 없음, 진짜 AMI/키페어 사용,
 # VPC 안 만들고 계정 기본 VPC 사용.
 # =============================================================================

@@ -13,7 +13,7 @@
 | [PF3 — 서버 모니터링 시스템](PortFolio/PF3/) | `Python` `psutil` `Logging` `Bash` `Slack` | CPU/메모리/디스크 5분 주기 수집 + 임계값 초과 시 Slack 자동 알림 + 로그 분석 리포트 | ✅ 완료 |
 | [PF2 — Go + Docker 배포 자동화](PortFolio/PF2/) | `Go` `Docker` `Docker Compose` `nginx` `Trivy` `Bash` | Go API 서버 멀티스테이지 빌드(~10MB) + nginx 리버스프록시 + Trivy 보안 스캔 + `deploy.sh` 한 줄 배포 | ✅ 완료 |
 | [Terraform IaC (D1~D5)](terraform/) | `Terraform` `AWS` `LocalStack` `checkov` | VPC·SG·IAM·EC2·RDS 모듈화 + 원격 state(S3 backend + DynamoDB 락) + Workspace 환경분리 + 3-tier 통합 스택(d5-final) | ✅ 완료 |
-| [PF-IaC — Terraform + Ansible 연동](terraform/pf-IaC/) | `Terraform` `Ansible` `AWS EC2` `nginx` `Docker` | 실 AWS EC2 프로비저닝 → 수동 서버구성 선행 → Ansible로 nginx·docker 재구성 + 멱등성 검증(changed=0) · 실행 증적 포함 | ✅ 완료 |
+| [PF-IaC — Terraform + Ansible 연동](PortFolio/PF-IaC/) | `Terraform` `Ansible` `AWS EC2` `nginx` `Docker` | 실 AWS EC2 프로비저닝 → 수동 서버구성 선행 → Ansible로 nginx·docker 재구성 + 멱등성 검증(changed=0) · 실행 증적 포함 | ✅ 완료 |
 
 ---
 
