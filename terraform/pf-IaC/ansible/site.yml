@@ -1,0 +1,46 @@
+# =============================================================================
+# site.yml — PF-IaC: Terraform이 만든 EC2를 Ansible로 구성
+# 오전 수동 작업(apt nginx → index 수정 → charset → reload)의 자동화 버전.
+# 실행: ansible-playbook -i inventory.ini site.yml
+# =============================================================================
+
+- name: 웹서버 구성 (nginx + docker)    # 플레이 이름 — 실행 로그 맨 위에 표시
+  hosts: web                            # inventory.ini의 [web] 그룹이 대상
+  become: true                          # 모든 태스크를 sudo로 — 오전에 sudo 쳤던 그 자리들
+
+  tasks:
+    - name: nginx 설치                  # = 오전의 sudo apt install nginx
+      apt:                              # apt 모듈
+        name: nginx                     # 패키지명
+        state: present                  # "설치된 상태"를 보장 — 이미 있으면 건너뜀(멱등성의 핵심)
+        update_cache: true              # 설치 전 apt update
+
+    - name: index.html 배포             # = 오전의 sudo vim으로 html 수정
+      copy:                             # copy 모듈: 내용을 원격 파일로 배치
+        content: "PF-IaC: Terraform + Ansible로 구성한 서버\n"
+        dest: /var/www/html/index.html  # index 우선순위 1위 파일로 배포
+                                        #   → 재설치로 생긴 index.nginx-debian.html을 이김
+      # notify 없음 — html은 요청마다 새로 읽으니 reload 불필요 (오전에 몸으로 배운 것)
+
+    - name: charset utf-8 설정 배포     # = 오전의 charset utf-8; 한 줄
+      copy:
+        content: "charset utf-8;\n"
+        dest: /etc/nginx/conf.d/charset.conf   # conf.d/*.conf는 nginx.conf의 include에 걸림
+      notify: reload nginx              # 이 파일이 "바뀌었을 때만" 핸들러 호출 — 설정은 적용이 필요하니까
+
+    - name: nginx 기동 + 부팅 시 자동시작
+      service:                          # service 모듈 = systemctl의 코드 버전
+        name: nginx
+        state: started                  # 떠 있는 상태 보장
+        enabled: true                   # = systemctl enable (재부팅에도 살아남게)
+
+    - name: docker 설치                 # D5 스펙의 나머지 절반
+      apt:
+        name: docker.io                 # Ubuntu 기본 저장소의 docker
+        state: present
+
+  handlers:                             # 핸들러: notify된 경우에만, 플레이 맨 끝에 딱 1번 실행
+    - name: reload nginx                # notify에 쓴 이름과 한 글자도 다르면 안 됨
+      service:
+        name: nginx
+        state: reloaded                 # restart 아닌 reload — 연결 안 끊고 설정만 갈아끼움
