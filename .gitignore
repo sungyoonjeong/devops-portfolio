@@ -18,6 +18,11 @@ PortFolio/PF3/report.txt
 Network/network-project1/myserver_partA
 Network/network-project1/myserver_partB
 
+# Terraform 산출물 (레포 전역 — terraform/ 밖에서도 적용)
+**/.terraform/
+*.tfstate
+*.tfstate.backup
+
 # 기타
 __pycache__/
 *.pyc
