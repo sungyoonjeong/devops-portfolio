@@ -66,7 +66,8 @@
 
 ```
 PF3/
-├── monitor.py          # Python 메트릭 수집 + Slack 알림
+├── monitor.py          # Python 메트릭 수집 + Slack 알림 (웹훅은 환경변수)
+├── Dockerfile          # 컨테이너화 (python:3.11-slim)
 ├── log_analyzer.py     # 로그 실시간 분석 + 리포트 생성
 ├── monitor.sh          # Bash 서버 상태 점검
 ├── cleanup.sh          # 오래된 로그 자동 삭제
@@ -94,11 +95,13 @@ api.slack.com/apps → Create New App
 → URL 복사
 ```
 
-`monitor.py` 상단에 URL 입력:
+URL은 **환경변수로만** 주입한다 (코드에 하드코딩 금지 — 공개 레포에 시크릿이 올라가는 사고 방지):
 
-```python
-SLACK_WEBHOOK = "https://hooks.slack.com/services/YOUR/URL"
+```bash
+export SLACK_WEBHOOK_URL="https://hooks.slack.com/services/YOUR/URL"
 ```
+
+미설정 시 알림만 건너뛰고 수집·로그는 정상 동작한다.
 
 ### 3. 실행 권한 부여
 
@@ -121,6 +124,21 @@ python3 log_analyzer.py
 # 오래된 로그 정리
 ./cleanup.sh
 ```
+
+### 5. Docker로 실행
+
+```bash
+docker build -t pf3-monitor .
+
+docker run -d --name pf3 \
+  -e SLACK_WEBHOOK_URL="https://hooks.slack.com/services/YOUR/URL" \
+  -v /:/host:ro -e DISK_PATH=/host \
+  pf3-monitor
+
+docker logs -f pf3
+```
+
+컨테이너 관측의 함정 하나: CPU·메모리는 `/proc` 기반이라 컨테이너 안에서도 호스트 값이 읽히지만, **디스크는 컨테이너 파일시스템을 보게 된다.** 그래서 호스트 루트를 `/host`로 읽기전용 마운트하고 `DISK_PATH=/host`로 측정 경로를 바꿔준다.
 
 ---
 
@@ -222,6 +240,14 @@ CHECK_INTERVAL   = 300   # 5분마다 자동 실행
 
 4. try/except로 Slack 오류 처리
    → 네트워크 오류 시 프로그램 중단 방지
+
+5. 시크릿은 코드 밖으로
+   → Webhook URL을 하드코딩했다가 공개 레포에 노출된 실수를 겪고
+     환경변수 주입으로 전환. 노출된 URL은 Slack에서 폐기·재발급
+
+6. 컨테이너에서의 호스트 관측
+   → /proc 기반(CPU·메모리)은 컨테이너 안에서도 호스트 값,
+     디스크는 -v /:/host:ro 마운트 + DISK_PATH로 해결
 ```
 
 ---

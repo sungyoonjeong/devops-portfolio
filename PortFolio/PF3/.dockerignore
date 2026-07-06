@@ -1,0 +1,7 @@
+# 이미지에 들어가면 안 되는 것들 - 코드(monitor.py)만 담는다
+*.log
+*.md
+report.txt
+cleanup.sh
+monitor.sh
+log_analyzer.py
