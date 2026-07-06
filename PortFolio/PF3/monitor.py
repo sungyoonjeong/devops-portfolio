@@ -7,6 +7,7 @@
 
 # ── 모듈 불러오기 ────────────────────────────────────────────
 
+import os            # 환경변수 읽기 (os.environ) - 시크릿을 코드 밖으로 빼는 통로
 import psutil        # 서버 시스템 정보(CPU·메모리·디스크) 읽는 외부 라이브러리
 import requests      # HTTP 요청 보내는 외부 라이브러리 (Slack에 POST 요청할 때 사용)
 import logging       # 로그를 파일과 화면에 기록하는 Python 기본 내장 모듈
@@ -17,9 +18,14 @@ from logging.handlers import RotatingFileHandler  # 로그 파일 크기 제한 
 
 # ── 설정값 ───────────────────────────────────────────────────
 
-# Slack Webhook URL: Slack에서 발급받은 주소를 여기에 입력
-# 이 URL로 POST 요청을 보내면 Slack 채널에 메시지가 옴
-SLACK_WEBHOOK = "https://hooks.slack.com/services/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"
+# Slack Webhook URL: 환경변수에서 읽는다 (코드에 하드코딩 금지 - 공개 레포 유출 사고 방지)
+# 실행 예: SLACK_WEBHOOK_URL="https://hooks.slack.com/..." python3 monitor.py
+# 미설정 시 알림만 건너뛰고 수집·로그는 정상 동작
+SLACK_WEBHOOK = os.environ.get("SLACK_WEBHOOK_URL", "")
+
+# 디스크 측정 경로: 기본은 루트(/). 컨테이너에서 호스트 디스크를 보려면
+# -v /:/host:ro 로 마운트하고 DISK_PATH=/host 로 지정
+DISK_PATH = os.environ.get("DISK_PATH", "/")
 
 # 임계값: 이 수치를 초과하면 Slack 알림 발송
 CPU_THRESHOLD    = 80.0  # CPU 사용률이 80% 넘으면 알림
@@ -73,9 +79,9 @@ def get_metrics():
     # .percent: 그 중 사용률(%)만 꺼냄
     memory = psutil.virtual_memory().percent
 
-    # disk_usage('/'): 루트(/) 경로의 디스크 정보를 담은 객체 반환
+    # disk_usage(DISK_PATH): 지정 경로의 디스크 정보를 담은 객체 반환 (기본 /)
     # .percent: 그 중 사용률(%)만 꺼냄
-    disk = psutil.disk_usage('/').percent
+    disk = psutil.disk_usage(DISK_PATH).percent
 
     # 세 값을 동시에 반환 (다중 반환값)
     # 호출하는 쪽에서 cpu, memory, disk = get_metrics() 로 받음
@@ -86,6 +92,11 @@ def get_metrics():
 
 def send_slack(message):
     """Slack Webhook으로 메시지를 전송하는 함수"""
+
+    # 웹훅 미설정이면 전송 시도 자체를 안 함 (URL 없이 POST하면 에러만 쌓임)
+    if not SLACK_WEBHOOK:
+        logger.warning("SLACK_WEBHOOK_URL 미설정 - Slack 알림 건너뜀")
+        return
 
     # try: 실행 중 오류가 생겨도 프로그램이 멈추지 않도록 감싸기
     try:
