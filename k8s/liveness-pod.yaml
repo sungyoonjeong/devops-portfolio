@@ -1,0 +1,18 @@
+# livenessProbe 실습 — 일부러 없는 경로(/healthz)를 검사시켜 재시작을 유도
+apiVersion: v1
+kind: Pod
+metadata:
+  name: liveness-pod
+spec:
+  containers:
+  - name: nginx
+    image: nginx
+    ports:
+    - containerPort: 80
+    livenessProbe:
+      httpGet:
+        path: /healthz        # nginx에 없는 경로 → 404 → 실패
+        port: 80
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      failureThreshold: 3     # 연속 3회 실패 시 컨테이너 재시작
