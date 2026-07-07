@@ -1,0 +1,16 @@
+# 리소스 할당 실습 — requests(스케줄링 기준) / limits(초과 시 제재)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: resource-pod
+spec:
+  containers:
+  - name: nginx
+    image: nginx
+    resources:
+      requests:
+        cpu: 200m         # 0.2코어 예약 — scheduler가 이 값으로 배치 판단
+        memory: 128Mi
+      limits:
+        cpu: 500m         # 초과 시 throttle
+        memory: 256Mi     # 초과 시 OOMKilled

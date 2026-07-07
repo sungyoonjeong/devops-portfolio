@@ -1,0 +1,11 @@
+# 선언형 Pod 생성 실습 — kubectl run(명령형)과 대비용
+apiVersion: v1
+kind: Pod
+metadata:
+  name: yaml-pod
+spec:
+  containers:
+  - name: nginx-container
+    image: nginx
+    ports:
+    - containerPort: 80

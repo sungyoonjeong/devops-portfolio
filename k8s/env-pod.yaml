@@ -1,0 +1,14 @@
+# 환경변수 실습 — 컨테이너에 env 주입 (PF3의 -e 주입과 같은 원리)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: env-pod
+spec:
+  containers:
+  - name: nginx
+    image: nginx
+    env:
+    - name: DB_HOST
+      value: "pf-db.example.com"
+    - name: APP_MODE
+      value: "dev"
