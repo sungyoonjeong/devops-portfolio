@@ -1011,29 +1011,33 @@ minikube addons enable ingress
 minikube ssh | minikube ip | minikube tunnel
 ```
 
-## 부록 C. 4일 계획 (7/7~7/10)
+## 부록 C. 복습 질문
 
-```
-날짜   정리 장       따배쿠 강의        실습 산출물
------  -----------  ----------------  --------------------------------
-7/7    1~5장        1-1 ~ 5-7         Pod 생성 2방식·관찰 4종·프로브
-7/8    6장          6-x               Deployment 롤링업데이트·롤백
-7/9    7~8장        7-x, 8            PF2 Go 서버 Service·Ingress 노출
-7/10   9~11장+PF    9-x, 10, 11       ConfigMap/Secret + PF-K8s 조립
-```
+먼저 안 보고 답해보고, 막히면 해당 장으로 돌아가기.
 
-진행: 강의 전에 해당 장 한 번 훑기 → 강의는 배속 → 실습은 노트 안 보고 먼저, 막히면 그때 펴기.
+**1장. Ansible과 K8s의 "상태 유지"는 뭐가 다른가**
+→ 둘 다 선언한 상태로 수렴시키지만, Ansible은 플레이북을 실행하는 순간에만 맞춰주고 끝난다. K8s는 컨트롤러가 24시간 상주하며 감시-조정 루프를 돌린다. 실행 시점 수렴 vs 상시 수렴.
 
-복습 질문 (안 보고 답해보기):
+**3장. `--dry-run=client -o yaml`을 왜 쓰는가**
+→ YAML을 맨손으로 치지 않기 위해. 실제로 만들지는 않고 뼈대 YAML만 뽑아 파일로 저장 → 수정 → apply. 오타 없는 시작점을 얻는 표준 기술이고 CKA에서도 시간 절약 핵심.
 
-```
-1장   Ansible과 K8s의 "상태 유지"는 뭐가 다른가
-3장   --dry-run=client -o yaml을 왜 쓰는가
-4장   kubectl create 이후 파드가 뜨기까지 부품 6개의 순서를 말로
-5장   livenessProbe와 readinessProbe의 차이 / OOMKilled는 왜 나는가
-6장   Deployment는 왜 RS를 직접 안 쓰고 한 겹 더 감쌌나
-7장   Service에 접속 안 될 때 첫 확인 명령은 (답: get endpoints)
-8장   Ingress 리소스만 만들고 controller가 없으면 무슨 일이 일어나나
-10장  ConfigMap을 고쳤는데 env로 주입한 파드에 반영이 안 되는 이유
-11장  base64가 암호화가 아니라면 Secret의 진짜 보호는 뭘로 하나
-```
+**4장. kubectl create 이후 파드가 뜨기까지 부품 순서를 말로**
+→ kubectl → apiserver(인증·검증) → etcd 기록 → controller-manager가 RS·Pod 오브젝트 생성 → scheduler가 노드 배정 → 그 노드 kubelet이 감지해 containerd로 컨테이너 실행 → 상태 보고가 etcd에 반영. 부품끼리 직접 명령하지 않고 전부 apiserver 경유.
+
+**5장. livenessProbe와 readinessProbe의 차이 / OOMKilled는 왜 나는가**
+→ liveness 실패 = 컨테이너 재시작(죽은 앱 살리기), readiness 실패 = Service 트래픽에서 제외만(재시작 없음, 워밍업 보호). / OOMKilled는 메모리 limits 초과 시 — CPU는 압축 가능해서 throttle로 끝나지만 메모리는 뺏을 수 없어서 커널이 컨테이너를 죽인다.
+
+**6장. Deployment는 왜 RS를 직접 안 쓰고 한 겹 더 감쌌나**
+→ RS는 개수 유지만 할 줄 안다. 버전 교체는 "새 RS를 만들어 점진 교체하고, 옛 RS를 롤백용으로 보관"하는 상위 관리자가 필요 — 그게 Deployment(롤링업데이트·롤백·리비전 이력).
+
+**7장. Service에 접속 안 될 때 첫 확인 명령은**
+→ `kubectl get endpoints <svc>`. 비어 있으면 selector와 파드 label 불일치가 원인 — 네트워크 파기 전에 이것부터.
+
+**8장. Ingress 리소스만 만들고 controller가 없으면**
+→ 아무 일도 일어나지 않는다. 리소스는 라우팅 규칙 선언일 뿐이고 트래픽을 실제로 처리하는 건 controller(nginx 등). 규칙만 있고 실행자가 없는 상태.
+
+**10장. ConfigMap을 고쳤는데 env로 주입한 파드에 반영이 안 되는 이유**
+→ 환경변수는 컨테이너 시작 시점에 박제된다. 반영하려면 `rollout restart`로 파드 재생성. volume 마운트 방식이었으면 파일은 자동 갱신됐다 (앱이 다시 읽는지는 별개).
+
+**11장. base64가 암호화가 아니라면 Secret의 진짜 보호는**
+→ etcd 저장 시 암호화 설정 + RBAC로 조회 권한 제한 + 외부 시크릿 매니저(Vault) 연동. 그리고 Secret YAML을 레포에 커밋하지 않는 것 — base64는 `base64 -d` 한 줄이면 원문이다.
