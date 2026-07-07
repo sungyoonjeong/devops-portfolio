@@ -1,8 +1,8 @@
-# K8S_STUDY — 따배쿠 입문 개념서
+# K8S_STUDY — 따배쿠 입문 정리
 
-따배쿠(이성미) 입문 재생목록 35강을 장 단위로 정리한 개념서.
-강의는 K8s v1.15~1.19 시절 녹화라, 지금(v1.35) 다르게 동작하는 부분은 각 장에 **[지금은]** 으로 표시했다.
-실습 환경은 minikube 단일 노드 — 구축 과정은 [SETUP.md](SETUP.md) 참조.
+따배쿠 입문 35강 정리. 강의 번호 대신 주제별로 장을 묶었다.
+강의가 v1.15~1.19 시절 녹화라 지금(v1.35)과 다르게 동작하는 건 **[지금은]** 표시.
+실습은 minikube 단일 노드 — 세팅은 [SETUP.md](SETUP.md).
 
 ```
 장   주제                          강의 번호
@@ -18,7 +18,7 @@
 9    Label·Annotation              9-x
 10   ConfigMap                     10
 11   Secret                        11
-부록  구버전 대조표 / 치트시트 / 4일 매핑
+부록  구버전 대조표 / 치트시트 / 4일 계획
 ```
 
 ---
@@ -84,14 +84,14 @@ Terraform(선언한 인프라로 수렴)·Ansible(멱등성)과 같은 철학인
 
 강의에서는 Katacoda와 Play with Kubernetes를 소개한다.
 
-**[지금은]** Katacoda는 2022년 서비스 종료. 대체재는 **Killercoda**(killercoda.com) — CKA 실전 연습에서도 쓰게 될 곳이라 지금 계정 만들어두면 좋다. 우리는 로컬 minikube가 있으니 브라우저 실습은 보조 수단.
+**[지금은]** Katacoda는 2022년 서비스 종료. 대체는 **Killercoda**(killercoda.com) — 어차피 CKA 연습 때 쓸 곳. 로컬에 minikube 있으니 브라우저 실습은 보조 수단.
 
 ---
 
 ## 2장. 클러스터 설치 (2-x강)
 
 강의에서는 VM 2~3대(master 1 + worker 2)를 만들고 kubeadm으로 직접 클러스터를 구성한다.
-**우리는 minikube로 대체**했으므로([SETUP.md](SETUP.md)) 이 장은 "kubeadm 설치가 어떤 흐름인지"만 개념으로 잡고 넘어간다. 직접 설치는 CKA 준비(8월) 때 다시 만난다.
+minikube로 대체했으므로([SETUP.md](SETUP.md)) 이 장은 "kubeadm 설치가 어떤 흐름인지"만 잡고 넘어간다. 직접 설치는 CKA 준비(8월) 때.
 
 ### kubeadm 설치 흐름 (개념만)
 
@@ -114,7 +114,7 @@ Terraform(선언한 인프라로 수렴)·Ansible(멱등성)과 같은 철학인
 
 ### [지금은] 이 장에서 강의와 크게 달라진 것
 
-- **Docker 런타임 제거**: v1.24부터 dockershim 삭제 → 런타임은 containerd(또는 CRI-O). 강의에서 노드에 docker를 설치하고 `docker ps`로 컨테이너를 확인하는 장면은 지금은 재현 안 됨. 노드 레벨 확인은 `crictl ps` (우리는 kubectl 관점만 쓰면 되므로 무관)
+- **Docker 런타임 제거**: v1.24부터 dockershim 삭제 → 런타임은 containerd(또는 CRI-O). 강의에서 노드에 docker를 설치하고 `docker ps`로 컨테이너를 확인하는 장면은 지금은 재현 안 됨. 노드 레벨 확인은 `crictl ps` (kubectl 관점만 쓰면 무관)
 - **master → control-plane**: 명칭·라벨·taint 전부 변경 (`node-role.kubernetes.io/control-plane`)
 - minikube는 이 사전작업~init~CNI 전 과정을 자동으로 해준다. 그래서 학습용
 
@@ -236,7 +236,7 @@ kubectl exec -it webserver -- /bin/bash
 
 ```
 1. kubectl  → apiserver에 REST 요청 (인증·검증)
-2. apiserver → etcd에 "deployment web, replicas 3" 기록. 여기까지가 '수리(접수)'
+2. apiserver → etcd에 "deployment web, replicas 3" 기록 (여기까지가 접수)
 3. controller-manager → 감시 중 새 deployment 발견 → ReplicaSet 생성 → Pod 오브젝트 3개 생성
    (아직 어느 노드인지는 미정 = Pending)
 4. scheduler → 노드 미정 파드 발견 → 조건 맞는 노드 선택 → apiserver에 기록
@@ -244,7 +244,7 @@ kubectl exec -it webserver -- /bin/bash
 6. kubelet → 상태를 apiserver에 보고 → etcd 갱신 → kubectl get pod에 Running
 ```
 
-포인트: **부품끼리 직접 명령하지 않는다.** 전부 "apiserver에 기록 → 담당자가 감시하다 자기 일을 한다" 방식 (수준 높은 표현으로 event-driven, watch 기반). 그래서 부품 하나가 잠깐 죽어도 복구되면 이어서 동작한다.
+포인트: **부품끼리 직접 명령하지 않는다.** 전부 "apiserver에 기록 → 담당자가 감시하다 자기 일을 한다" 방식(watch 기반). 그래서 부품 하나가 잠깐 죽어도 복구되면 이어서 동작한다.
 
 ### 4-2. Namespace — 클러스터 안의 논리적 분리
 
@@ -606,7 +606,7 @@ Deployment의 파드는 이름이 `web-7d9f...-x2k4j` 처럼 랜덤이고 서로
 - **파드별 전용 스토리지**: `volumeClaimTemplates`로 파드마다 자기 PVC — 재생성돼도 자기 데이터에 다시 붙음
 - headless Service(7장)와 짝: `mysql-0.mysql.default.svc...` 처럼 파드별 고정 DNS
 
-PF-K8s에서 Redis/Postgres를 StatefulSet으로 띄우는 실습이 예정돼 있다 (PV/PVC와 함께).
+PF-K8s에서 Redis/Postgres를 StatefulSet으로 직접 띄워볼 것 (PV/PVC랑 같이).
 
 ### Job — 끝나야 하는 작업
 
@@ -1034,10 +1034,10 @@ minikube addons enable ingress
 minikube ssh | minikube ip | minikube tunnel
 ```
 
-## 부록 C. 4일 학습 매핑 (7/7~7/10)
+## 부록 C. 4일 계획 (7/7~7/10)
 
 ```
-날짜   이 문서       따배쿠 강의        실습 산출물
+날짜   정리 장       따배쿠 강의        실습 산출물
 -----  -----------  ----------------  --------------------------------
 7/7    1~5장        1-1 ~ 5-7         Pod 생성 2방식·관찰 4종·프로브
 7/8    6장          6-x               Deployment 롤링업데이트·롤백
@@ -1045,7 +1045,9 @@ minikube ssh | minikube ip | minikube tunnel
 7/10   9~11장+PF    9-x, 10, 11       ConfigMap/Secret + PF-K8s 조립
 ```
 
-읽는 법: 강의 듣기 전 해당 장을 한 번 훑고(예습 10분) → 강의는 배속으로 확인하듯 → 실습은 이 문서 안 보고 먼저 시도, 막히면 그때 해당 절 참조. 실습까지 끝난 장은 자가점검 — 각 장에서 스스로 답해볼 것:
+진행: 강의 전에 해당 장 한 번 훑기 → 강의는 배속 → 실습은 노트 안 보고 먼저, 막히면 그때 펴기.
+
+복습 질문 (안 보고 답해보기):
 
 ```
 1장   Ansible과 K8s의 "상태 유지"는 뭐가 다른가
