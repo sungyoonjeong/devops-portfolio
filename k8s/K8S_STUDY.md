@@ -222,13 +222,26 @@ kubectl exec -it webserver -- /bin/bash
 └────────────────────────────────────────────────────────────┘
 ```
 
+**마스터 컴포넌트** (결정을 내리는 쪽):
+
 - **etcd** — 클러스터의 모든 상태가 저장되는 key-value 장부. 여기가 날아가면 클러스터가 날아감 (CKA에서 백업/복구 필수 출제)
-- **kube-apiserver** — 유일한 관문. kubectl도, 내부 부품끼리도 전부 apiserver를 통해서만 대화. 인증·인가·검증 담당
+- **kube-apiserver** — 유일한 관문. kubectl도, 내부 부품끼리도 전부 apiserver를 통해서만 대화. 요청의 인증·인가·유효성 검증 담당
 - **kube-scheduler** — "이 파드를 어느 노드에 둘까" 결정만 함 (실행은 kubelet이). 판단 기준: 리소스 요구량, nodeSelector, affinity 등
-- **kube-controller-manager** — "선언된 상태 = 실제 상태" 유지 루프 모음. 파드 3개 선언했는데 2개면 1개 만들라고 요청. Ansible 멱등성의 24시간 상주 버전
-- **kubelet** — 각 노드의 에이전트. apiserver를 감시하다 자기 노드에 배정된 파드를 런타임 시켜 실행, 상태 보고, 프로브 실행
-- **kube-proxy** — 각 노드의 네트워크 규칙 담당 (Service의 실체, 7장)
-- **애드온**: coredns(클러스터 내부 DNS), CNI 플러그인(파드 네트워크), 대시보드 등
+- **kube-controller-manager** — 파드를 관찰하며 "선언된 상태 = 실제 상태" 유지 루프 모음. 파드 3개 선언했는데 2개면 1개 만들라고 요청. Ansible 멱등성의 24시간 상주 버전
+
+**워커 노드 컴포넌트** (실행하는 쪽 — 모든 노드에 있음):
+
+- **kubelet** — 각 노드의 K8s 에이전트. apiserver를 감시하다 자기 노드에 배정된 파드를 런타임 시켜 실행, 상태 보고, 프로브 실행. **유일하게 파드가 아니라 노드의 데몬(systemd 서비스)으로 돈다** — 파드를 띄우는 주체라서 자기가 파드일 수 없음
+- **kube-proxy** — 각 노드의 네트워크 규칙 담당. Service로 온 트래픽을 파드로 보내는 iptables rule을 구성 (Service의 실체, 7장)
+- **컨테이너 런타임** — kubelet의 지시로 컨테이너를 실제 실행하는 엔진. docker/containerd, 그 최하층에서 최종 실행하는 건 runc
+
+**애드온** (필수는 아니지만 사실상 다 씀):
+
+- 네트워크(CNI) — calico, flannel 등 (2장). 클러스터 필수에 가까움
+- DNS — coreDNS. 서비스 이름을 IP로 풀어줌 (7장)
+- 대시보드 — 웹 UI
+- 자원 모니터링 — cAdvisor (kubelet에 내장돼 컨테이너 CPU·메모리 수집. 8월에 배울 Prometheus가 긁어가는 소스가 이것)
+- 클러스터 로깅 — 컨테이너·K8s 운영 로그를 중앙화. ELK/EFK 스택, DataDog 등 (EFK는 8월 Observability에서 실습)
 
 ### 파드 하나가 뜨기까지 (전체 흐름)
 
