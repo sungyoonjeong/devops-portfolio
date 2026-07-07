@@ -66,5 +66,32 @@ kubectl get nodes # 아침 학습 시작 전 Ready 확인
 ## 메모
 
 - 다운로드한 설치 파일(kubectl 59MB, minikube 134MB)은 `sudo install`로 /usr/local/bin에 복사된 뒤 삭제 — 레포에 바이너리 커밋 금지
-- 따배쿠 강의는 VM 여러 대로 클러스터를 구성하지만 학습엔 minikube 단일 노드로 충분. 멀티노드는 CKA 준비 때
 - 다음: Pod → Deployment → Service 순서로 실습 (7/7~)
+
+---
+
+## 3노드 재구축 (7/7)
+
+강의(마스터1+워커2)와 같은 토폴로지로 맞추려고 단일 노드를 지우고 3노드로 재구축.
+
+```bash
+minikube delete --all
+minikube start --nodes 3 --driver=docker --memory 2048 --cpus 2   # 노드당 2GB/2CPU
+kubectl get nodes
+# minikube       Ready   control-plane      ← 강의의 master
+# minikube-m02   Ready   <none>             ← worker1 (워커엔 role 라벨이 없어 <none>)
+# minikube-m03   Ready   <none>             ← worker2
+```
+
+### 겪은 문제: 기존 클러스터에 node add 하면 안 된다
+
+처음엔 단일 노드 클러스터를 살려둔 채 `minikube node add` / 별도 프로필 `--nodes 3`을 시도했는데 둘 다 실패.
+
+- `node add`로 붙인 노드가 NotReady 지속 — 단일 노드로 시작한 클러스터엔 멀티노드용 CNI(kindnet)가 없어서. "CNI 없으면 노드가 NotReady + coredns Pending"을 실물로 확인
+- 별도 프로필은 m03에서 join 타임아웃(NotFound) — 클러스터 2개 동시 기동으로 WSL 메모리(7.7GB) 경쟁이 유력
+- 결론: **멀티노드는 처음부터 `--nodes N`으로 시작**해야 CNI가 제대로 깔린다. 기존 것과 병행하지 말고 하나만
+
+### 운영 변경점
+
+- stop/start가 노드 3개 단위 — 기동이 더 걸리고 메모리도 더 먹으니 안 쓸 때 `minikube stop` 습관이 더 중요해짐
+- 노드 안에 들어갈 일이 있으면 `minikube ssh -n minikube-m02` 처럼 `-n`으로 대상 지정
