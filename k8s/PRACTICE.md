@@ -16,6 +16,8 @@ resource-pod.yaml    requests/limits 실습
 env-pod.yaml         환경변수 주입 실습
 rc-nginx.yaml        ReplicationController 실습 (replicas 3, selector app=webui)
 deploy-nginx.yaml    Deployment 실습 — 같은 스펙, kind만 Deployment
+deployment-exam1.yaml  롤링업데이트 실습 (app-deploy, 컨테이너명 web)
+deployment-exam2.yaml  strategy 필드 실습용 — maxSurge·maxUnavailable·change-cause annotation
 rs-nginx.yaml        ReplicaSet 실습 — RC와 같은 스펙, selector만 matchLabels 문법
 redis.yaml           RC 라벨 실험용 — 일부러 같은 app=webui 라벨을 단 파드
 ```
@@ -424,3 +426,75 @@ kubectl get deploy,rs,pod
 곁다리 오타 교훈: `kubectl get delete rs ...`라고 치면 `the server doesn't have a resource type "delete"` — kubectl은 동사(get) 다음 인자를 리소스 타입으로 해석한다.
 
 정리는 두 단계로 해봤다. `delete rs`로 RS만 지워도 Deployment가 살아 있는 한 새 RS를 만들어 되살린다(파드 지우면 RS가 보충하던 것과 같은 원리, 한 층 위). 그래서 진짜 삭제는 `delete deploy`.
+
+### 롤링업데이트 — set image, rollout history/status/pause (6-2강 계속)
+
+[deployment-exam1.yaml](deployment-exam1.yaml)로 app-deploy 생성(nginx:1.14, 컨테이너 이름 web). 처음 만들 땐 서버가 이런 에러를 뱉었다:
+
+```
+strict decoding error: unknown field "spec.template.spec.containers[0].ports[0].contaierPort"
+```
+
+containerPort에서 n이 빠진 오타. `unknown field "경로"`는 따옴표 안이 곧 범인 위치라 에러 메시지만 제대로 읽으면 바로 잡힌다.
+
+**--record와 CHANGE-CAUSE.** 그냥 만들면 rollout history의 CHANGE-CAUSE가 `<none>`이다. 지우고 `--record`를 붙여 다시 만들면 어떤 명령으로 이 리비전이 생겼는지가 남는다:
+
+```bash
+kubectl create -f deployment-exam1.yaml --record
+kubectl set image deployment app-deploy web=nginx:1.15 --record
+kubectl rollout history deployment app-deploy
+```
+```
+REVISION  CHANGE-CAUSE
+1         kubectl create --filename=deployment-exam1.yaml --record=true
+2         kubectl set image deployment app-deploy web=nginx:1.15 --record=true
+```
+
+![--record와 rollout history](images/rollout-01-record-history.png)
+
+`--record`는 deprecated 경고가 뜨지만 아직 동작한다(부록A 참고 — 요즘은 change-cause annotation을 직접 다는 쪽).
+
+**롤링업데이트가 실제로 굴러가는 모습.** 1.15→1.16으로 한 번 더 올리면서 `rollout status`로 지켜봤다:
+
+![rollout status 실시간](images/rollout-02-status-live.png)
+
+```
+1 out of 3 new replicas have been updated...
+2 out of 3 new replicas have been updated...
+1 old replicas are pending termination...
+deployment "app-deploy" successfully rolled out
+```
+
+새 버전 파드를 하나 만들고 → 준비되면 옛 파드 하나 죽이고 → 반복. 전체가 한 번에 내려가는 구간이 없어서 서비스가 안 끊긴다. 이게 Deployment가 RS를 하나 더 만들어서 하는 일 — 새 RS(1.16)를 0→3으로 키우고 옛 RS(1.15)를 3→0으로 줄이는 과정이다.
+
+**pause/resume**도 해봤다(스크린샷은 안 남김): `kubectl rollout pause deployment app-deploy` 상태에서는 set image를 해도 롤아웃이 시작되지 않고, `rollout resume` 하는 순간 쌓인 변경이 반영된다. 여러 변경을 모아서 한 번의 롤아웃으로 내보낼 때 쓰는 것.
+
+### 롤링업데이트 전략 필드 — maxSurge · maxUnavailable (6-3강, 강의 정리)
+
+이건 직접 돌린 건 아니고 강의 내용 정리. 위에서 set image로 굴렸던 롤링업데이트가 "어떤 규칙으로" 교체되는지를 yaml에 명시하는 부분이다. [deployment-exam2.yaml](deployment-exam2.yaml)로 만들어둠:
+
+```yaml
+spec:
+  progressDeadlineSeconds: 600
+  revisionHistoryLimit: 10
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+```
+
+핵심은 strategy 두 필드. replicas 3 기준으로 계산하면:
+
+- **maxSurge 25%**: 교체 중 desired를 초과해서 만들 수 있는 최대치. 3×0.25=0.75 → **올림 1** → 파드가 순간 최대 4개까지 뜰 수 있다
+- **maxUnavailable 25%**: 교체 중 동시에 죽어 있어도 되는 최대치. 3×0.25=0.75 → **내림 0** → 가용 파드가 3개 밑으로 절대 안 내려간다
+
+그러니까 25%/25% 기본값에서 replicas 3이면 "새 것 1개 추가(4개) → 준비되면 옛 것 1개 제거(3개) → 반복"이 된다. 위 rollout status 화면에서 정확히 하나씩 교체됐던 이유가 이 계산. maxSurge를 키우면 교체가 빨라지는 대신 순간 자원을 더 먹고, maxUnavailable을 키우면 자원은 아끼지만 가용량이 출렁인다.
+
+나머지 필드:
+
+- **revisionHistoryLimit 10**: 옛 ReplicaSet을 10개까지 보관 — rollout undo로 돌아갈 수 있는 범위
+- **progressDeadlineSeconds 600**: 600초 안에 롤아웃이 진전 없으면 실패로 판정
+- **annotations의 kubernetes.io/change-cause**: deprecated된 --record의 정식 대체. yaml에 박아두면 apply할 때마다 rollout history의 CHANGE-CAUSE에 이 문구가 남는다 (버전 올릴 때 image와 change-cause를 같이 고쳐서 apply)
+
+강의 흐름은 apply → vi로 image 1.15 + change-cause 수정 → 재apply(선언형 업데이트) → `rollout history` → `rollout undo`(롤백). undo는 아직 안 해봤으니 이 yaml로 직접 돌려볼 것.
