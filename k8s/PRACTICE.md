@@ -14,6 +14,9 @@ liveness-pod.yaml    livenessProbe 실패 유도 실습
 init-pod.yaml        init container 실습
 resource-pod.yaml    requests/limits 실습
 env-pod.yaml         환경변수 주입 실습
+rc-nginx.yaml        ReplicationController 실습 (replicas 3, selector app=webui)
+rs-nginx.yaml        ReplicaSet 실습 — RC와 같은 스펙, selector만 matchLabels 문법
+redis.yaml           RC 라벨 실험용 — 일부러 같은 app=webui 라벨을 단 파드
 ```
 
 ---
@@ -330,3 +333,75 @@ APP_MODE=dev
 PF3에서 `-e SLACK_WEBHOOK_URL`로 주입하던 것의 K8s 문법. 값을 yaml에 직접 박는 건 임시고, 정식으로는 ConfigMap/Secret(10·11장)에서 가져온다.
 
 실습 후 `kubectl delete -f`로 4개 전부 정리, default 네임스페이스 비움 확인.
+
+---
+
+## 7/8 — ReplicationController (6-1강)
+
+### RC 생성과 조회
+
+[rc-nginx.yaml](rc-nginx.yaml)로 생성 — replicas 3, selector `app: webui`, 템플릿은 nginx:1.14. RC는 selector가 ReplicaSet처럼 matchLabels 블록이 아니라 등호 매칭 한 줄이라는 것도 yaml에서 확인.
+
+```bash
+kubectl create -f rc-nginx.yaml
+kubectl get replicationcontrollers   # 풀네임
+kubectl get rc                       # 축약형, 같은 결과
+```
+
+![get rc](images/rc-01-get.png)
+
+DESIRED 3 / CURRENT 3 / READY 3. describe로 속을 보면 selector·라벨·Pod Template이 그대로 보이고, Events에 replication-controller가 파드 3개를 SuccessfulCreate한 기록이 남는다:
+
+![describe rc](images/rc-02-describe.png)
+
+파드 이름이 `rc-nginx-wqms5`처럼 랜덤 suffix로 만들어지는 것 확인 — 템플릿의 `name: nginx-pod`는 무시되고 RC 이름 + 랜덤 문자열이 붙는다.
+
+### 라벨 실험, edit vs scale, 삭제 후 보충
+
+![라벨 실험과 scale](images/rc-03-edit-scale.png)
+
+순서대로 한 것:
+
+```bash
+kubectl get pods --show-labels        # 3개 전부 app=webui
+kubectl create -f redis.yaml          # 일부러 app=webui 라벨을 단 redis 파드 투입
+kubectl edit pod rc-nginx             # → NotFound 에러
+kubectl edit rc rc-nginx              # 실행 중인 RC 스펙을 vi로 직접 수정
+kubectl scale rc rc-nginx --replicas=2
+kubectl get rc                        # DESIRED 2 / CURRENT 2 / READY 2
+kubectl delete pod rc-nginx-cf496     # 파드 하나 삭제 → RC가 즉시 새로 보충
+```
+
+여기서 얻은 것 세 가지.
+
+**RC는 라벨만 본다.** redis 파드에 같은 `app=webui`를 달아 투입하면 RC 입장에선 관리 대상이 4개가 된 것 — 초과분을 바로 죽인다. redis라는 이름도, 이미지가 다르다는 것도 안 본다. 이후 `get pods --show-labels`에 redis가 없는 이유.
+
+**`edit pod rc-nginx`는 NotFound.** rc-nginx는 RC 이름이지 파드 이름이 아니다. 파드는 랜덤 suffix가 붙은 이름으로 존재하니까, 고치려면 컨트롤러(`edit rc rc-nginx`)를 고쳐야 한다.
+
+**edit vs scale.** edit는 스펙 전체(이미지 버전 등)를 열어서 고치는 범용 수단, scale은 replicas 숫자 하나만 바꾸는 단축 명령. 결과는 같은 원리 — RC가 desired와 current의 차이를 보고 맞춘다. 마지막에 파드를 지워도 RC가 desired 2를 유지하려고 즉시 보충하는 것까지 확인(어제 Deployment self-healing과 같은 동작, 이번엔 1세대 컨트롤러로).
+
+### ReplicaSet — 같은 내용을 2세대 문법으로
+
+[rs-nginx.yaml](rs-nginx.yaml)은 rc-nginx.yaml과 완전히 같은 스펙(replicas 3, app=webui, nginx:1.14)이고 다른 건 문법뿐 — apiVersion이 `apps/v1`, selector가 `matchLabels` 블록. 생성·조회·scale·삭제 전부 RC와 똑같이 동작한다 (`kubectl get rs`).
+
+### RC와 RS를 같은 라벨로 동시에 — 서로 안 싸운다?
+
+RS 파드 3개가 떠 있는 상태에서 같은 `app=webui` selector의 RC를 만들어봤다:
+
+![RC·RS 같은 라벨 동거 실험](images/rs-01-rc-rs-same-label.png)
+
+예상은 "라벨만 보니까 둘이 싸우겠지"였는데, 결과는 **6개 공존** — RS 것 3개(21s) + RC 것 3개(6s)가 전부 Running. redis는 초과분이라고 바로 죽였으면서 왜 서로의 파드는 안 건드리나.
+
+답은 **ownerReferences**. 컨트롤러가 만든 파드에는 metadata에 소유자 표시가 박힌다(`kubectl get pod <이름> -o yaml`에서 `ownerReferences` 확인 가능). 컨트롤러는 selector에 맞는 파드 중 **자기 소유거나 주인이 없는(고아) 파드만** 관리 대상으로 센다. 그래서:
+
+- redis 파드 = 라벨은 맞고 주인은 없음 → RC가 입양 → desired 초과 → 정리됨
+- RS 소속 파드 = 라벨은 맞지만 주인이 RS → RC는 자기 것만 3개 새로 만들고 남의 것은 무시
+
+"컨트롤러는 라벨만 본다"의 정확한 버전: **라벨이 맞으면서 주인이 없는 파드만 입양한다.**
+
+마무리는 컨트롤러째 삭제 — 소속 파드도 같이 사라진다:
+
+```bash
+kubectl delete rc rc-nginx
+kubectl delete rs rs-nginx
+```
