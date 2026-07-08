@@ -582,6 +582,8 @@ kubectl scale rs rs-nginx --replicas=5             # 개수 조절
 
 재미있는 성질: RS는 **label만 본다.** 같은 label의 파드를 수동으로 하나 더 만들면 "4개네? 1개 초과" 하고 지워버린다. 반대로 기존 파드의 label을 떼면 RS 관리에서 빠져 고아가 된다.
 
+단 정확히는 "label이 맞으면서 **주인이 없는** 파드만 입양한다"이다. 컨트롤러가 만든 파드에는 metadata에 ownerReferences(소유자 표시)가 박혀서, 같은 label의 RC와 RS를 동시에 띄워도 서로의 파드를 뺏지 않고 각자 replicas만큼 공존한다. 수동으로 만든 파드가 정리당하는 건 주인이 없는 고아라서다.
+
 그런데 RS를 직접 쓰는 일도 없다. 이유는 다음 절.
 
 ### Deployment — 실무의 기본 단위
