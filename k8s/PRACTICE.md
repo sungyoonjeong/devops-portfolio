@@ -498,3 +498,58 @@ spec:
 - **annotations의 kubernetes.io/change-cause**: deprecated된 --record의 정식 대체. yaml에 박아두면 apply할 때마다 rollout history의 CHANGE-CAUSE에 이 문구가 남는다 (버전 올릴 때 image와 change-cause를 같이 고쳐서 apply)
 
 강의 흐름은 apply → vi로 image 1.15 + change-cause 수정 → 재apply(선언형 업데이트) → `rollout history` → `rollout undo`(롤백). undo는 아직 안 해봤으니 이 yaml로 직접 돌려볼 것.
+
+### 롤백 — undo · --to-revision, 그리고 annotate 방식 change-cause (6-3강)
+
+deployment-exam1.yaml로 리비전 3개(1.14→1.15→1.16, 전부 --record)를 다시 쌓아놓고 롤백을 굴려봤다.
+
+**undo는 "직전"으로.** 1.16에서 `rollout undo` 하면 1.15로 돌아간다:
+
+```bash
+kubectl rollout undo deployment app-deploy
+kubectl rollout history deployment app-deploy
+```
+```
+REVISION  CHANGE-CAUSE
+1         kubectl create --filename=deployment-exam1.yaml --record=true
+3         kubectl set image deployment app-deploy web=nginx:1.16 --record=true
+4         kubectl set image deployment app-deploy web=nginx:1.15 --record=true
+```
+
+리비전 2가 사라지고 4로 재등장 — **돌아간 리비전은 번호를 재사용하지 않고 맨 뒤 번호를 새로 받는다.**
+
+**특정 리비전으로 가려면 --to-revision.** 처음(1.14)으로:
+
+```bash
+kubectl rollout undo deployment app-deploy --to-revision=1
+```
+```
+REVISION  CHANGE-CAUSE
+3         kubectl set image deployment app-deploy web=nginx:1.16 --record=true
+4         kubectl set image deployment app-deploy web=nginx:1.15 --record=true
+5         kubectl create --filename=deployment-exam1.yaml --record=true
+```
+
+이미지 확인하면 nginx:1.14. 리비전 1이 5번으로 옮겨간 것도 같은 규칙.
+
+**annotate 방식 change-cause — 그리고 함정 하나.** --record 없이 1.17로 올리고 history를 봤더니:
+
+```
+REVISION  CHANGE-CAUSE
+5         kubectl create --filename=deployment-exam1.yaml --record=true
+6         kubectl create --filename=deployment-exam1.yaml --record=true
+```
+
+리비전 6은 set image로 만든 건데 CHANGE-CAUSE가 create라고 거짓말을 한다. change-cause는 Deployment 오브젝트에 붙은 annotation이 새 리비전에 **그대로 복사**되는 구조라서, 갱신 없이 새 롤아웃을 하면 옛 문구를 물려받기 때문. 그래서 annotate로 제대로 박아준다:
+
+```bash
+kubectl annotate deployment app-deploy kubernetes.io/change-cause="nginx 1.17로 업데이트 - annotate 방식"
+```
+```
+REVISION  CHANGE-CAUSE
+6         nginx 1.17로 업데이트 - annotate 방식
+```
+
+정리하면 — --record는 deprecated고, annotate 방식은 "롤아웃 후 change-cause를 갱신"까지가 한 세트다. 안 그러면 history가 거짓말한다.
+
+실습 후 app-deploy 삭제, minikube stop으로 마감.
