@@ -863,6 +863,8 @@ curl -s -H "Host: shop.local" http://192.168.49.2/pay    # <h1>결제 페이지<
 
 7/16 체크리스트 3번 — 지금까지 배운 Service·Ingress·프로브를 PF2(Go 서버, `/health` `/metrics`)에 실제로 적용하는 과제. 파일 위치는 `PortFolio/PF-K8s/k8s/`(PF-K8s README에 계획된 구조 그대로), 최종본은 그쪽에 있고 여기는 과정 기록.
 
+**왜 이게 중요한 실습인가**: 지금까지 1~11장은 매번 새 Deployment·새 Service를 만들고 실습이 끝나면 지우는 방식이었다. 이번엔 반대로 **6월에 이미 만들어둔 실제 앱(PF2)**을 대상으로, 배운 개념(Pod 배치·Controller의 self-healing·Service의 로드밸런싱·Ingress의 L7 라우팅·readiness/liveness 프로브·requests/limits)을 전부 한 번에 조립하는 문제였다. 흩어진 실습 하나하나는 이해했어도 "내 앱 하나를 처음부터 끝까지 K8s에 올리기"는 다른 난이도라는 걸 확인하는 게 목적 — PF1·캡스톤에서 규모만 커질 뿐 똑같이 반복할 파이프라인(빌드→배포→노출→검증)의 최소 버전이기도 하다. 실제로 PF2의 `main.go` 주석엔 "/health는 로드밸런서나 오케스트레이터(K8s)가 주기적으로 호출해 서버 상태를 판단한다"고 6월에 이미 적혀 있었다 — 그 문장이 오늘 실제로 성립했다.
+
 ### 이미지를 클러스터에 넣는 법 — 레지스트리 없이
 
 PF2는 `deploy.sh`에서 커밋 해시를 태그로 쓰는 관례가 있어서 그대로 따랐다:
@@ -876,7 +878,9 @@ minikube image load pf2:021c651   # 3노드 전부에 로드되는지 확인
 
 `minikube image load`가 핵심이다. minikube 노드들은 호스트 Docker와 별개의 컨테이너 런타임을 쓰기 때문에, 호스트에서 빌드한 이미지가 자동으로 노드에 보이지 않는다. 레지스트리(Docker Hub 등)에 push하고 pull하는 게 정석이지만, 로컬 실습에선 `minikube image load`로 호스트의 이미지를 노드 런타임에 직접 밀어넣을 수 있다. 3노드 각각 `docker images`로 확인해서 전부 들어간 것까지 봤다.
 
-**함정 하나 미리 막기**: Deployment에 `imagePullPolicy: Never`를 반드시 넣어야 한다. 기본 정책(태그가 `latest`가 아니면 `IfNotPresent`지만 `pf2:021c651`처럼 커밋해시 태그라도 안 넣으면 상황에 따라 Docker Hub에서 `pf2` 이미지를 찾으려다 실패한다)이 로컬 전용 이미지와 안 맞아서, 안 걸어두면 4장에서 배운 `ImagePullBackOff`가 그대로 재현된다.
+**함정 하나 미리 막기**: Deployment에 `imagePullPolicy: Never`를 반드시 넣어야 한다. 기본 정책(태그가 `latest`가 아니면 `IfNotPresent`)이라 원래는 "노드에 이미 있으면 그걸 쓴다"가 맞는데, 문제는 K8s가 이 이미지를 로컬 전용인지 알 방법이 없다는 것 — `pf2`라는 이름만 보고 "Docker Hub의 `library/pf2`인가?" 하고 레지스트리부터 확인하러 갈 수 있다. 로컬에만 있는 이름 없는 이미지를 공개 레지스트리에서 찾다가 실패하면 4장에서 배운 그 `ImagePullBackOff`가 그대로 재현된다. `imagePullPolicy: Never`는 "레지스트리는 아예 쳐다보지 말고 노드에 없으면 그냥 실패해라"는 명시적 선언이라, 이 로컬 실습 환경에서는 오히려 더 안전하고 빠르다(레지스트리 조회 자체를 생략).
+
+이 방식의 한계도 짚어둘 것: `minikube image load` + `imagePullPolicy: Never` 조합은 **minikube 로컬 실습 전용 임시 수단**이다. 실제 프로덕션의 다중 노드 클러스터(EC2 여러 대로 구성한 kubeadm 클러스터 등)에서는 "내가 빌드한 이미지"가 다른 노드엔 존재하지 않으므로 이 방법 자체가 성립하지 않는다 — 반드시 레지스트리(ECR)에 push하고 각 노드가 pull하는 정석 흐름이 필요하다. 7/17~18 CI/CD 실습에서 GitHub Actions가 이미지를 빌드해 ECR로 push하는 job을 만들 예정인데, 그게 완성되면 여기서 쓴 `minikube image load`를 걷어내고 `image: <ECR주소>/pf2:021c651` + `imagePullPolicy: IfNotPresent`로 교체하는 게 다음 단계다.
 
 ### deployment.yaml — 오늘 배운 프로브·리소스 전부 적용
 
@@ -916,7 +920,9 @@ spec:
           periodSeconds: 10
 ```
 
-PF2가 이미 `/health` 엔드포인트를 갖고 있어서 5장에서 배운 readinessProbe·livenessProbe를 그대로 꽂을 자리였다. requests/limits는 Go 정적 바이너리 + alpine이라 아주 가볍게(50m/32Mi ~ 200m/64Mi) 잡았다.
+PF2가 이미 `/health` 엔드포인트를 갖고 있어서 5장에서 배운 readinessProbe·livenessProbe를 그대로 꽂을 자리였다. 같은 경로를 두 프로브가 같이 쓰지만 의미는 다르다 — readinessProbe가 실패하면 Service의 Endpoints에서만 빠지고(7장에서 본 `get endpoints`가 비는 상황을 직접 만든 것과 같은 원리, 파드는 안 죽음) 트래픽만 안 받고, livenessProbe가 실패하면 컨테이너 자체가 재시작된다. initialDelaySeconds를 readiness(2초)보다 liveness(5초)를 더 길게 둔 이유는, Go 서버는 기동이 거의 즉시라 여유를 크게 안 둬도 되지만 "막 뜬 파드를 무리하게 빨리 죽이지 않기" 위한 안전 여유를 liveness 쪽에 더 준 것.
+
+requests/limits는 Go 정적 바이너리 + alpine 10MB 이미지라 아주 가볍게(50m/32Mi ~ 200m/64Mi) 잡았다. `replicas: 3`도 트래픽 근거가 아니라 **3노드 클러스터 전체에 실제로 분산 배치되는지 눈으로 확인하려는 의도**로 노드 수에 맞춘 것 — 운영에서 replicas 값을 정하는 기준(가용성 요구·트래픽량)과는 다른, 지금 단계의 학습 목적 우선순위다. PF1에서 hpa.yaml이 붙으면 고정값이 아니라 min/max 범위로 바뀔 예정.
 
 apply 후 `kubectl rollout status`:
 
@@ -984,4 +990,4 @@ curl -s -H "Host: pf2.local" http://192.168.49.2/metrics
 
 `requests_total`이 벌써 13인 게 재밌는 지점 — 실제 curl은 2번밖에 안 했는데 카운터가 13이다. readinessProbe(5초마다)·livenessProbe(10초마다)가 파드 3개에서 각각 `/health`를 계속 때리고 있고, PF2 코드(main.go)가 헬스체크 요청도 똑같이 `requestsTotal`에 합산하기 때문. **모니터링 지표를 설계할 때 "이 숫자엔 프로브 트래픽이 섞여 있는가"를 구분해야 한다**는 실전 교훈 — 8월 Observability에서 Prometheus 지표 설계할 때 다시 마주칠 문제.
 
-외부→Ingress(L7, host 라우팅)→Service(ClusterIP, 로드밸런싱)→Pod(3개 중 하나, readiness 통과한 것만) 전체 경로가 지금까지 배운 장들의 합으로 완성됐다. 배포는 그대로 두고(PF-K8s 진행 중인 산출물이라 실습 데모처럼 삭제하지 않음), PF-K8s/README.md에 진행 상황을 기록.
+외부→Ingress(L7, host 라우팅)→Service(ClusterIP, 로드밸런싱)→Pod(3개 중 하나, readiness 통과한 것만) 전체 경로가 지금까지 배운 장들의 합으로 완성됐다. 배포는 그대로 두고(PF-K8s 진행 중인 산출물이라 실습 데모처럼 삭제하지 않음), yaml 3개엔 나중에 다시 봐도 바로 이해되게 한 줄 주석을 전부 달아뒀다. 각 필드를 왜 그 값으로 정했는지(선택-이유 표), 아키텍처 다이어그램, 남은 작업(hpa·network-policy·rbac·helm과 ECR 전환)까지는 [PF-K8s/README.md](../PortFolio/PF-K8s/README.md)에 정리해뒀다 — 여기는 "어떻게 했는지" 과정 기록, README는 "무엇을 왜 그렇게 만들었는지" 레퍼런스로 역할을 나눴다.
