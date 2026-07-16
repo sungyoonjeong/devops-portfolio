@@ -553,3 +553,95 @@ REVISION  CHANGE-CAUSE
 정리하면 — --record는 deprecated고, annotate 방식은 "롤아웃 후 change-cause를 갱신"까지가 한 세트다. 안 그러면 history가 거짓말한다.
 
 실습 후 app-deploy 삭제, minikube stop으로 마감.
+
+## 7/16 — DaemonSet 실물 확인 · Job · CronJob (6장 마무리)
+
+### DaemonSet — 새로 만들 필요 없이 이미 돌고 있다
+
+DaemonSet은 "노드마다 1개씩"이 전부라서, 만들어보기 전에 클러스터에 이미 있는 실물부터 확인했다:
+
+```bash
+kubectl get daemonset -n kube-system
+kubectl get pods -n kube-system -o wide --no-headers | grep -e kindnet -e kube-proxy
+```
+```
+NAME         DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE   NODE SELECTOR
+kindnet      3         3         3       3            3           <none>
+kube-proxy   3         3         3       3            3           kubernetes.io/os=linux
+```
+
+kindnet(CNI)과 kube-proxy가 둘 다 DaemonSet이고, DESIRED가 replicas 설정값이 아니라 **노드 수 3**이다. -o wide로 보면 파드가 minikube·m02·m03에 정확히 1개씩 — RC/RS/Deployment가 "총 몇 개"를 보장한다면 DaemonSet은 "어느 노드에나 있음"을 보장한다. 그래서 spec에 replicas 필드 자체가 없다. 네트워크 에이전트·로그 수집기·모니터링 에이전트가 전부 이 패턴인 이유.
+
+![ds](images/ds-01-kindnet-kubeproxy-per-node.png)
+
+### Job — 끝나는 게 정상인 워크로드
+
+지금까지의 컨트롤러는 전부 "계속 떠 있게"였는데 Job은 반대로 "완료까지"를 보장한다. job-hello.yaml:
+
+```yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-hello
+spec:
+  backoffLimit: 2
+  template:
+    spec:
+      containers:
+      - name: hello
+        image: busybox:1.36
+        command: ["sh", "-c", "echo hello from job; sleep 15"]
+      restartPolicy: Never
+```
+
+apply 직후 Running 0/1 → 15초 뒤:
+
+```
+NAME                  STATUS     COMPLETIONS   DURATION   AGE
+job.batch/job-hello   Complete   1/1           23s        34s
+
+NAME                  READY   STATUS      RESTARTS   AGE
+pod/job-hello-5psj6   0/1     Completed   0          34s
+```
+
+관찰 포인트 셋. 파드가 끝나도 **삭제되지 않고 Completed로 남는다**(로그 조회용 — `kubectl logs job/job-hello`가 잡 이름으로 바로 된다). RESTARTS 0 — Deployment였다면 컨테이너가 끝나는 순간 되살렸을 텐데 Job은 정상 종료로 친다. 그리고 template의 restartPolicy가 **Never/OnFailure만 허용**된다 — Always면 "완료"라는 개념 자체가 성립 안 하니까. backoffLimit 2는 실패 시 재시도 한도.
+
+![job](images/job-01-create-running.png)
+![job](images/job-02-complete-logs.png)
+
+### CronJob — Job 위에 스케줄 한 겹
+
+yaml이 3중 중첩이다: CronJob spec 안에 jobTemplate(Job spec 그대로), 그 안에 template(Pod spec). 컨트롤러가 컨트롤러를 만드는 구조가 yaml에도 그대로 보인다.
+
+```yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cj-date
+spec:
+  schedule: "*/1 * * * *"
+  successfulJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: date
+            image: busybox:1.36
+            command: ["sh", "-c", "date"]
+          restartPolicy: OnFailure
+```
+
+매분 실행으로 걸어두고 2분 기다렸더니:
+
+```
+NAME                          STATUS     COMPLETIONS   DURATION   AGE
+job.batch/cj-date-29736763    Complete   1/1           7s         94s
+job.batch/cj-date-29736764    Complete   1/1           3s         34s
+```
+
+로그를 찍어보면 `Thu Jul 16 12:43:04 UTC 2026` / `Thu Jul 16 12:44:00 UTC 2026` — 정확히 1분 간격. Job 이름 뒤에 붙는 숫자 29736763은 랜덤이 아니라 **스케줄 시각의 분 단위 epoch**(×60 하면 그 시각의 unix time). successfulJobsHistoryLimit 3이라 완료된 Job은 3개까지만 남고 오래된 것부터 정리된다.
+
+![cj](images/cj-01-schedule-two-runs.png)
+
+실습 후 `kubectl delete -f`로 둘 다 삭제. 클러스터는 7장 Service 실습 이어가야 하니 그대로 둠.
