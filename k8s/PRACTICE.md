@@ -885,40 +885,50 @@ minikube image load pf2:021c651   # 3노드 전부에 로드되는지 확인
 ### deployment.yaml — 오늘 배운 프로브·리소스 전부 적용
 
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: apps/v1                # Deployment는 apps/v1 그룹 (Pod/Service/ConfigMap은 v1)
+kind: Deployment                   # ReplicaSet(개수 유지)을 감싸 롤링업데이트·롤백까지 관리하는 컨트롤러
 metadata:
-  name: pf2
+  name: pf2                        # kubectl get deploy pf2 로 조회할 이름
   labels:
-    app: pf2
+    app: pf2                       # Deployment 자체에 붙는 라벨 (파드 라벨과는 별개)
 spec:
-  replicas: 3
+  replicas: 3                      # 3노드 클러스터에 하나씩 분산 배치되도록 (self-healing 대상 수)
   selector:
     matchLabels:
-      app: pf2
-  template:
+      app: pf2                     # 이 라벨이 달린 파드만 이 Deployment가 관리 — template.labels와 반드시 일치해야 함
+  template:                        # 파드 설계도 — 부족하면 이 스펙으로 새로 만든다
     metadata:
       labels:
-        app: pf2
+        app: pf2                   # Service selector·above matchLabels 둘 다 이 값을 본다
     spec:
       containers:
       - name: pf2
-        image: pf2:021c651
-        imagePullPolicy: Never
+        image: pf2:021c651         # PF2/deploy.sh와 동일하게 커밋 해시를 태그로 사용 (이미지-코드 1:1 추적)
+        imagePullPolicy: Never     # 레지스트리에 없는 로컬 이미지 — Docker Hub에서 pull 시도하면 ImagePullBackOff 남
         ports:
-        - containerPort: 8080
+        - containerPort: 8080      # main.go의 ListenAndServe(":8080")과 일치
         resources:
-          requests: { cpu: 50m, memory: 32Mi }
-          limits: { cpu: 200m, memory: 64Mi }
-        readinessProbe:
-          httpGet: { path: /health, port: 8080 }
-          initialDelaySeconds: 2
-          periodSeconds: 5
-        livenessProbe:
-          httpGet: { path: /health, port: 8080 }
-          initialDelaySeconds: 5
+          requests:                # 스케줄링 기준 — 노드가 이 정도는 확보하고 있어야 배치
+            cpu: 50m                #   Go 정적 바이너리 + alpine이라 가볍게 잡음 (0.05코어)
+            memory: 32Mi
+          limits:                  # 초과 시 CPU는 throttle, 메모리는 OOMKilled
+            cpu: 200m
+            memory: 64Mi
+        readinessProbe:            # 실패하면 Service 트래픽에서만 제외 (재시작 없음) — 워밍업 보호
+          httpGet:
+            path: /health          # main.go의 healthHandler
+            port: 8080
+          initialDelaySeconds: 2   # 컨테이너 시작 후 2초 뒤 첫 검사 (Go 서버라 기동이 빨라 짧게)
+          periodSeconds: 5         # 5초마다 재검사
+        livenessProbe:             # 실패하면 컨테이너 자체를 재시작 (self-healing)
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5   # readiness보다 여유 있게 — 막 뜬 파드를 죽이지 않도록
           periodSeconds: 10
 ```
+
+(원본 그대로 — `PortFolio/PF-K8s/k8s/deployment.yaml`)
 
 PF2가 이미 `/health` 엔드포인트를 갖고 있어서 5장에서 배운 readinessProbe·livenessProbe를 그대로 꽂을 자리였다. 같은 경로를 두 프로브가 같이 쓰지만 의미는 다르다 — readinessProbe가 실패하면 Service의 Endpoints에서만 빠지고(7장에서 본 `get endpoints`가 비는 상황을 직접 만든 것과 같은 원리, 파드는 안 죽음) 트래픽만 안 받고, livenessProbe가 실패하면 컨테이너 자체가 재시작된다. initialDelaySeconds를 readiness(2초)보다 liveness(5초)를 더 길게 둔 이유는, Go 서버는 기동이 거의 즉시라 여유를 크게 안 둬도 되지만 "막 뜬 파드를 무리하게 빨리 죽이지 않기" 위한 안전 여유를 liveness 쪽에 더 준 것.
 
@@ -942,34 +952,41 @@ deployment "pf2" successfully rolled out
 ### service.yaml · ingress.yaml — 7/16 함정을 미리 반영
 
 ```yaml
-apiVersion: v1
+apiVersion: v1                     # Service는 core v1 그룹
 kind: Service
 metadata:
-  name: pf2-svc
+  name: pf2-svc                    # Ingress의 backend.service.name이 이 이름을 참조
 spec:
   selector:
-    app: pf2
+    app: pf2                       # 이 라벨 달린 파드 전부가 트래픽 분배 대상 (Deployment의 파드 라벨과 매치)
   ports:
-  - port: 80
-    targetPort: 8080
+  - port: 80                       # Service 자신이 여는 포트 — 클러스터 안에서 pf2-svc:80으로 접근
+    targetPort: 8080                # 실제 트래픽이 도착하는 컨테이너 포트 (main.go의 8080)
+                                    # type 생략 = ClusterIP 기본값(클러스터 내부 전용, 외부 노출은 Ingress가 담당)
 ---
-apiVersion: networking.k8s.io/v1
-kind: Ingress
+apiVersion: networking.k8s.io/v1   # Ingress 전용 API 그룹 (강의 시절 extensions/v1beta1은 지금 에러)
+kind: Ingress                      # L7(HTTP) 라우터 — 이 리소스만으로는 아무 일도 안 일어남, controller가 실행 주체
 metadata:
   name: pf2-ingress
   annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/rewrite-target: /   # 매칭된 path를 백엔드로 넘기기 전 "/"로 치환
+                                                      # (7/16 메인·결제 페이지 실습에서 이거 없이 404 만났던 함정 반영)
 spec:
-  ingressClassName: nginx
+  ingressClassName: nginx          # minikube ingress 애드온(nginx ingress controller)이 이 규칙을 처리
   rules:
-  - host: pf2.local
+  - host: pf2.local                # curl -H "Host: pf2.local" 로만 매칭 — 실제 DNS 등록 없이 헤더로 테스트
     http:
       paths:
-      - path: /
-        pathType: Prefix
+      - path: /                    # 전체 경로를 pf2-svc로 — 지금은 서비스가 하나뿐이라 path 분기 불필요
+        pathType: Prefix           # Prefix/Exact 중 하나는 필수 필드 (강의 시절엔 없었음)
         backend:
-          service: { name: pf2-svc, port: { number: 80 } }
+          service:
+            name: pf2-svc           # service.yaml에서 만든 Service 이름과 일치해야 함
+            port:
+              number: 80             # Service가 여는 포트(targetPort 아님 — Service를 한 번 더 거쳐감)
 ```
+
+(원본 그대로 — `PortFolio/PF-K8s/k8s/service.yaml`, `ingress.yaml`)
 
 `rewrite-target: /`를 이번엔 처음부터 넣었다 — 7/16 메인/결제 페이지 실습에서 이거 없이 path 라우팅을 걸었다가 404를 만났던 그 함정을 아는 채로 시작한 것. path가 `/`(전체 prefix)라 사실 이번엔 없어도 됐을 수 있지만, 습관을 들이는 셈치고 넣었다.
 
