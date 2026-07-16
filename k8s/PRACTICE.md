@@ -858,3 +858,130 @@ curl -s -H "Host: shop.local" http://192.168.49.2/pay    # <h1>결제 페이지<
 강의는 ktcloud 인스턴스의 공인 IP로 포트포워딩까지 해서 실제 인터넷에 노출시키는데, 이 부분은 의도적으로 생략했다. 지금 환경(WSL2 + minikube)은애초에 공인 IP가 없어 포트포워딩 자체가 성립하지 않고, 설사 억지로 터널링(ngrok 등)을 붙여도 이 포트폴리오의 실제 목표 인프라는 ktcloud가 아니라 AWS다. 강의용 인프라를 흉내내는 데 시간을 쓰는 것보다, **PF1(7/20~)에서 AWS ALB+Route53+ACM으로 진짜 도메인·TLS까지 붙여서 한 번에 제대로** 하는 게 낫다는 판단. 원리(Ingress 뒤에 실제 공인 IP를 가진 로드밸런서가 오면 그대로 인터넷에 뜬다)는 이번 path 라우팅 실습으로 충분히 확인했다.
 
 실습 오브젝트는 전부 삭제, ingress 애드온은 PF2 노출용으로 켜둔 채 유지.
+
+## 7/17 (새벽) — PF2 K8s 배포 (PF-K8s 첫 조각)
+
+7/16 체크리스트 3번 — 지금까지 배운 Service·Ingress·프로브를 PF2(Go 서버, `/health` `/metrics`)에 실제로 적용하는 과제. 파일 위치는 `PortFolio/PF-K8s/k8s/`(PF-K8s README에 계획된 구조 그대로), 최종본은 그쪽에 있고 여기는 과정 기록.
+
+### 이미지를 클러스터에 넣는 법 — 레지스트리 없이
+
+PF2는 `deploy.sh`에서 커밋 해시를 태그로 쓰는 관례가 있어서 그대로 따랐다:
+
+```bash
+cd PortFolio/PF2
+git rev-parse --short HEAD        # 021c651
+docker build -t pf2:021c651 .
+minikube image load pf2:021c651   # 3노드 전부에 로드되는지 확인
+```
+
+`minikube image load`가 핵심이다. minikube 노드들은 호스트 Docker와 별개의 컨테이너 런타임을 쓰기 때문에, 호스트에서 빌드한 이미지가 자동으로 노드에 보이지 않는다. 레지스트리(Docker Hub 등)에 push하고 pull하는 게 정석이지만, 로컬 실습에선 `minikube image load`로 호스트의 이미지를 노드 런타임에 직접 밀어넣을 수 있다. 3노드 각각 `docker images`로 확인해서 전부 들어간 것까지 봤다.
+
+**함정 하나 미리 막기**: Deployment에 `imagePullPolicy: Never`를 반드시 넣어야 한다. 기본 정책(태그가 `latest`가 아니면 `IfNotPresent`지만 `pf2:021c651`처럼 커밋해시 태그라도 안 넣으면 상황에 따라 Docker Hub에서 `pf2` 이미지를 찾으려다 실패한다)이 로컬 전용 이미지와 안 맞아서, 안 걸어두면 4장에서 배운 `ImagePullBackOff`가 그대로 재현된다.
+
+### deployment.yaml — 오늘 배운 프로브·리소스 전부 적용
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pf2
+  labels:
+    app: pf2
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: pf2
+  template:
+    metadata:
+      labels:
+        app: pf2
+    spec:
+      containers:
+      - name: pf2
+        image: pf2:021c651
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 8080
+        resources:
+          requests: { cpu: 50m, memory: 32Mi }
+          limits: { cpu: 200m, memory: 64Mi }
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 2
+          periodSeconds: 5
+        livenessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 5
+          periodSeconds: 10
+```
+
+PF2가 이미 `/health` 엔드포인트를 갖고 있어서 5장에서 배운 readinessProbe·livenessProbe를 그대로 꽂을 자리였다. requests/limits는 Go 정적 바이너리 + alpine이라 아주 가볍게(50m/32Mi ~ 200m/64Mi) 잡았다.
+
+apply 후 `kubectl rollout status`:
+
+```
+Waiting for deployment "pf2" rollout to finish: 0 of 3 updated replicas are available...
+Waiting for deployment "pf2" rollout to finish: 1 of 3 updated replicas are available...
+Waiting for deployment "pf2" rollout to finish: 2 of 3 updated replicas are available...
+deployment "pf2" successfully rolled out
+```
+
+![pf2](images/pf2-01-apply-rollout.png)
+
+파드 배치를 보면 scheduler가 3개를 3노드에 정확히 하나씩 흩뿌렸다(minikube, m02, m03) — 6장에서 본 self-healing·분산 배치가 내 앱에서도 그대로 동작.
+
+![pf2](images/pf2-02-pod-svc-ingress.png)
+
+### service.yaml · ingress.yaml — 7/16 밤 함정을 미리 반영
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: pf2-svc
+spec:
+  selector:
+    app: pf2
+  ports:
+  - port: 80
+    targetPort: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: pf2-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: pf2.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service: { name: pf2-svc, port: { number: 80 } }
+```
+
+`rewrite-target: /`를 이번엔 처음부터 넣었다 — 어제 밤 메인/결제 페이지 실습에서 이거 없이 path 라우팅을 걸었다가 404를 만났던 그 함정을 아는 채로 시작한 것. path가 `/`(전체 prefix)라 사실 이번엔 없어도 됐을 수 있지만, 습관을 들이는 셈치고 넣었다.
+
+### 검증
+
+```bash
+kubectl get ingress pf2-ingress   # ADDRESS 192.168.49.2 확인
+curl -s -H "Host: pf2.local" http://192.168.49.2/health
+curl -s -H "Host: pf2.local" http://192.168.49.2/metrics
+```
+
+```json
+{"status":"ok","timestamp":"2026-07-16T16:16:42Z"}
+{"requests_total":13,"uptime_seconds":38}
+```
+
+![pf2](images/pf2-03-health-metrics-ingress.png)
+
+`requests_total`이 벌써 13인 게 재밌는 지점 — 실제 curl은 2번밖에 안 했는데 카운터가 13이다. readinessProbe(5초마다)·livenessProbe(10초마다)가 파드 3개에서 각각 `/health`를 계속 때리고 있고, PF2 코드(main.go)가 헬스체크 요청도 똑같이 `requestsTotal`에 합산하기 때문. **모니터링 지표를 설계할 때 "이 숫자엔 프로브 트래픽이 섞여 있는가"를 구분해야 한다**는 실전 교훈 — 8월 Observability에서 Prometheus 지표 설계할 때 다시 마주칠 문제.
+
+외부→Ingress(L7, host 라우팅)→Service(ClusterIP, 로드밸런싱)→Pod(3개 중 하나, readiness 통과한 것만) 전체 경로가 지금까지 배운 장들의 합으로 완성됐다. 배포는 그대로 두고(PF-K8s 진행 중인 산출물이라 실습 데모처럼 삭제하지 않음), PF-K8s/README.md에 진행 상황을 기록.
