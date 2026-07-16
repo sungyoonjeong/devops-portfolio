@@ -799,3 +799,62 @@ kubectl exec pod-secret -- df -h /etc/secret
 ![sec](images/sec-02-inject-tmpfs.png)
 
 실습 오브젝트 전부 삭제(deployment·svc 4종·ingress·pod 3종·cm·secret, m02의 disk 라벨도 제거). ingress 애드온은 다음 PF2 노출 실습에서 바로 쓸 거라 켜둔 채로 마감.
+
+## 7/16 (밤) — Ingress path 라우팅으로 다중 앱 배포 (메인·결제 페이지 시나리오)
+
+강의에서 Ingress로 메인페이지·결제페이지를 나눠 배포하는 실습이 있어서 같은 시나리오로 재현했다. 오늘 오후엔 host 기반 라우팅(`web.local`)만 했으니, 이번엔 **path 기반**으로 한 Ingress 뒤에 서비스 두 개를 나눠본다.
+
+ConfigMap 두 개로 각각 다른 index.html을 만들고(`메인 페이지` / `결제 페이지`), nginx 파드 두 벌(main-page, payment-page)에 마운트, Service도 각각 하나씩. Ingress는 하나로 묶었다:
+
+```yaml
+spec:
+  rules:
+  - host: shop.local
+    http:
+      paths:
+      - path: /main
+        pathType: Prefix
+        backend:
+          service: { name: svc-main-page, port: { number: 80 } }
+      - path: /pay
+        pathType: Prefix
+        backend:
+          service: { name: svc-payment-page, port: { number: 80 } }
+```
+
+### 함정 — path가 백엔드로 그대로 전달된다
+
+처음 apply하고 curl 했더니 둘 다 404:
+
+```bash
+curl -s -H "Host: shop.local" http://192.168.49.2/main
+curl -s -H "Host: shop.local" http://192.168.49.2/pay
+# 둘 다 → 404 Not Found (nginx가 준 진짜 404)
+```
+
+원인: nginx ingress controller는 기본적으로 **요청 path를 그대로 백엔드에 전달**한다. `/main`으로 들어온 요청이 main-page 파드에 `/main`이라는 경로로 그대로 도착하는데, 그 파드 안엔 `/`(index.html)만 있으니 404가 난 것. Ingress는 "어느 Service로 보낼지"만 정하지 "경로를 어떻게 바꿀지"는 별도 설정이 필요하다는 걸 몸으로 확인.
+
+해결은 annotation 한 줄:
+
+```yaml
+metadata:
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+```
+
+이게 있으면 controller가 백엔드로 넘기기 전에 매칭된 경로를 `/`로 바꿔준다(rewrite). 재apply 후:
+
+```bash
+curl -s -H "Host: shop.local" http://192.168.49.2/main   # <h1>메인 페이지</h1>
+curl -s -H "Host: shop.local" http://192.168.49.2/pay    # <h1>결제 페이지</h1>
+```
+
+같은 IP·같은 포트인데 path만 다르게 줘서 서로 다른 페이지가 나온다 — Ingress가 L7 라우터라는 게 오전의 host 기반 실습보다 이걸로 더 명확하게 보인다.
+
+![ing-path](images/ing-03-path-rewrite-target.png)
+
+### ktcloud 포트포워딩(실제 인터넷 노출) 실습은 여기서 재현하지 않음
+
+강의는 ktcloud 인스턴스의 공인 IP로 포트포워딩까지 해서 실제 인터넷에 노출시키는데, 이 부분은 의도적으로 생략했다. 지금 환경(WSL2 + minikube)은애초에 공인 IP가 없어 포트포워딩 자체가 성립하지 않고, 설사 억지로 터널링(ngrok 등)을 붙여도 이 포트폴리오의 실제 목표 인프라는 ktcloud가 아니라 AWS다. 강의용 인프라를 흉내내는 데 시간을 쓰는 것보다, **PF1(7/20~)에서 AWS ALB+Route53+ACM으로 진짜 도메인·TLS까지 붙여서 한 번에 제대로** 하는 게 낫다는 판단. 원리(Ingress 뒤에 실제 공인 IP를 가진 로드밸런서가 오면 그대로 인터넷에 뜬다)는 이번 path 라우팅 실습으로 충분히 확인했다.
+
+실습 오브젝트는 전부 삭제, ingress 애드온은 PF2 노출용으로 켜둔 채 유지.
