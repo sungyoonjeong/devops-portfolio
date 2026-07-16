@@ -800,7 +800,7 @@ kubectl exec pod-secret -- df -h /etc/secret
 
 실습 오브젝트 전부 삭제(deployment·svc 4종·ingress·pod 3종·cm·secret, m02의 disk 라벨도 제거). ingress 애드온은 다음 PF2 노출 실습에서 바로 쓸 거라 켜둔 채로 마감.
 
-## 7/16 (밤) — Ingress path 라우팅으로 다중 앱 배포 (메인·결제 페이지 시나리오)
+## 7/16 — Ingress path 라우팅으로 다중 앱 배포 (메인·결제 페이지 시나리오)
 
 강의에서 Ingress로 메인페이지·결제페이지를 나눠 배포하는 실습이 있어서 같은 시나리오로 재현했다. 오늘 오후엔 host 기반 라우팅(`web.local`)만 했으니, 이번엔 **path 기반**으로 한 Ingress 뒤에 서비스 두 개를 나눠본다.
 
@@ -859,7 +859,7 @@ curl -s -H "Host: shop.local" http://192.168.49.2/pay    # <h1>결제 페이지<
 
 실습 오브젝트는 전부 삭제, ingress 애드온은 PF2 노출용으로 켜둔 채 유지.
 
-## 7/17 (새벽) — PF2 K8s 배포 (PF-K8s 첫 조각)
+## 7/17 — PF2 K8s 배포 (PF-K8s 첫 조각)
 
 7/16 체크리스트 3번 — 지금까지 배운 Service·Ingress·프로브를 PF2(Go 서버, `/health` `/metrics`)에 실제로 적용하는 과제. 파일 위치는 `PortFolio/PF-K8s/k8s/`(PF-K8s README에 계획된 구조 그대로), 최종본은 그쪽에 있고 여기는 과정 기록.
 
@@ -933,7 +933,7 @@ deployment "pf2" successfully rolled out
 
 ![pf2](images/pf2-02-pod-svc-ingress.png)
 
-### service.yaml · ingress.yaml — 7/16 밤 함정을 미리 반영
+### service.yaml · ingress.yaml — 7/16 함정을 미리 반영
 
 ```yaml
 apiVersion: v1
@@ -965,7 +965,7 @@ spec:
           service: { name: pf2-svc, port: { number: 80 } }
 ```
 
-`rewrite-target: /`를 이번엔 처음부터 넣었다 — 어제 밤 메인/결제 페이지 실습에서 이거 없이 path 라우팅을 걸었다가 404를 만났던 그 함정을 아는 채로 시작한 것. path가 `/`(전체 prefix)라 사실 이번엔 없어도 됐을 수 있지만, 습관을 들이는 셈치고 넣었다.
+`rewrite-target: /`를 이번엔 처음부터 넣었다 — 7/16 메인/결제 페이지 실습에서 이거 없이 path 라우팅을 걸었다가 404를 만났던 그 함정을 아는 채로 시작한 것. path가 `/`(전체 prefix)라 사실 이번엔 없어도 됐을 수 있지만, 습관을 들이는 셈치고 넣었다.
 
 ### 검증
 
