@@ -1,41 +1,41 @@
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: apps/v1                # Deployment는 apps/v1 그룹 (Pod/Service/ConfigMap은 v1)
+kind: Deployment                   # ReplicaSet(개수 유지)을 감싸 롤링업데이트·롤백까지 관리하는 컨트롤러
 metadata:
-  name: pf2
+  name: pf2                        # kubectl get deploy pf2 로 조회할 이름
   labels:
-    app: pf2
+    app: pf2                       # Deployment 자체에 붙는 라벨 (파드 라벨과는 별개)
 spec:
-  replicas: 3
+  replicas: 3                      # 3노드 클러스터에 하나씩 분산 배치되도록 (self-healing 대상 수)
   selector:
     matchLabels:
-      app: pf2
-  template:
+      app: pf2                     # 이 라벨이 달린 파드만 이 Deployment가 관리 — template.labels와 반드시 일치해야 함
+  template:                        # 파드 설계도 — 부족하면 이 스펙으로 새로 만든다
     metadata:
       labels:
-        app: pf2
+        app: pf2                   # Service selector·above matchLabels 둘 다 이 값을 본다
     spec:
       containers:
       - name: pf2
-        image: pf2:021c651
-        imagePullPolicy: Never
+        image: pf2:021c651         # PF2/deploy.sh와 동일하게 커밋 해시를 태그로 사용 (이미지-코드 1:1 추적)
+        imagePullPolicy: Never     # 레지스트리에 없는 로컬 이미지 — Docker Hub에서 pull 시도하면 ImagePullBackOff 남
         ports:
-        - containerPort: 8080
+        - containerPort: 8080      # main.go의 ListenAndServe(":8080")과 일치
         resources:
-          requests:
-            cpu: 50m
+          requests:                # 스케줄링 기준 — 노드가 이 정도는 확보하고 있어야 배치
+            cpu: 50m                #   Go 정적 바이너리 + alpine이라 가볍게 잡음 (0.05코어)
             memory: 32Mi
-          limits:
+          limits:                  # 초과 시 CPU는 throttle, 메모리는 OOMKilled
             cpu: 200m
             memory: 64Mi
-        readinessProbe:
+        readinessProbe:            # 실패하면 Service 트래픽에서만 제외 (재시작 없음) — 워밍업 보호
+          httpGet:
+            path: /health          # main.go의 healthHandler
+            port: 8080
+          initialDelaySeconds: 2   # 컨테이너 시작 후 2초 뒤 첫 검사 (Go 서버라 기동이 빨라 짧게)
+          periodSeconds: 5         # 5초마다 재검사
+        livenessProbe:             # 실패하면 컨테이너 자체를 재시작 (self-healing)
           httpGet:
             path: /health
             port: 8080
-          initialDelaySeconds: 2
-          periodSeconds: 5
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8080
-          initialDelaySeconds: 5
+          initialDelaySeconds: 5   # readiness보다 여유 있게 — 막 뜬 파드를 죽이지 않도록
           periodSeconds: 10

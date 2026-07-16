@@ -1,19 +1,20 @@
-apiVersion: networking.k8s.io/v1
-kind: Ingress
+apiVersion: networking.k8s.io/v1   # Ingress 전용 API 그룹 (강의 시절 extensions/v1beta1은 지금 에러)
+kind: Ingress                      # L7(HTTP) 라우터 — 이 리소스만으로는 아무 일도 안 일어남, controller가 실행 주체
 metadata:
   name: pf2-ingress
   annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/rewrite-target: /   # 매칭된 path를 백엔드로 넘기기 전 "/"로 치환
+                                                      # (7/16 메인·결제 페이지 실습에서 이거 없이 404 만났던 함정 반영)
 spec:
-  ingressClassName: nginx
+  ingressClassName: nginx          # minikube ingress 애드온(nginx ingress controller)이 이 규칙을 처리
   rules:
-  - host: pf2.local
+  - host: pf2.local                # curl -H "Host: pf2.local" 로만 매칭 — 실제 DNS 등록 없이 헤더로 테스트
     http:
       paths:
-      - path: /
-        pathType: Prefix
+      - path: /                    # 전체 경로를 pf2-svc로 — 지금은 서비스가 하나뿐이라 path 분기 불필요
+        pathType: Prefix           # Prefix/Exact 중 하나는 필수 필드 (강의 시절엔 없었음)
         backend:
           service:
-            name: pf2-svc
+            name: pf2-svc           # service.yaml에서 만든 Service 이름과 일치해야 함
             port:
-              number: 80
+              number: 80             # Service가 여는 포트(targetPort 아님 — Service를 한 번 더 거쳐감)
