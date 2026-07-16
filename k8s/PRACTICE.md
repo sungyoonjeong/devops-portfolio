@@ -645,3 +645,157 @@ job.batch/cj-date-29736764    Complete   1/1           3s         34s
 ![cj](images/cj-01-schedule-two-runs.png)
 
 실습 후 `kubectl delete -f`로 둘 다 삭제. 
+
+## 7/16 — Service 5종 · Ingress · Label · ConfigMap · Secret (7~11장 이어서)
+
+### 준비 — Deployment와 ClusterIP, 그리고 Endpoints
+
+nginx 2대(deploy-web.yaml, label `app: web`)를 띄우고 expose로 ClusterIP Service를 만들었다:
+
+```bash
+kubectl apply -f deploy-web.yaml
+kubectl expose deployment web --port=80 --name=svc-clusterip
+kubectl get endpoints svc-clusterip
+```
+
+파드 IP가 10.244.1.4 / 10.244.2.3인데 endpoints가 정확히 `10.244.1.4:80,10.244.2.3:80` — **Service가 트래픽을 보낼 실제 목적지 명단이 Endpoints다.** selector(`app=web`)에 맞는 파드가 뜨고 죽을 때마다 이 명단이 자동 갱신된다. 여기가 비어 있으면 selector/label 불일치라는 뜻이라 Service 장애 진단 1순위. `get endpoints`에 deprecated 경고가 뜨는 건 EndpointSlice로 세대교체 중이라서(v1.33+).
+
+![svc](images/svc-01-clusterip-endpoints.png)
+
+### 클러스터 DNS — IP가 아니라 이름으로
+
+임시 파드에서 Service **이름**으로 접근:
+
+```bash
+kubectl run tmp --rm -it --restart=Never --image=busybox:1.36 -- sh -c "wget -qO- http://svc-clusterip | head -4"
+```
+
+`Welcome to nginx!` — IP를 어디에도 안 적었다. coredns가 `svc-clusterip` → ClusterIP로 풀어준 것. 앱 설정에 DB 주소를 IP가 아니라 서비스 이름으로 적는 이유가 이거다. `--rm -it --restart=Never`는 일회용 디버그 파드 패턴으로 외워둘 것.
+
+![svc](images/svc-02-dns-wget.png)
+
+### NodePort · LoadBalancer — 외부 노출 두 단계
+
+```bash
+kubectl expose deployment web --type=NodePort --port=80 --name=svc-nodeport
+kubectl expose deployment web --type=LoadBalancer --port=80 --name=svc-lb
+kubectl get svc
+curl -s http://$(minikube ip):32500 | grep -i title
+```
+
+NodePort는 PORT(S)가 `80:32500/TCP`로 나온다 — port 80, nodePort 32500(30000~32767 자동 할당). 노드 IP:32500으로 바로 nginx 응답. **LoadBalancer는 EXTERNAL-IP가 `<pending>`에서 안 움직인다** — LB를 실제로 만들어줄 클라우드가 없기 때문. AWS였으면 여기서 ELB가 자동 생성돼 IP가 박힌다. minikube에선 `minikube tunnel`로 흉내낼 수 있다는 것만 확인하고 넘어감.
+
+![svc](images/svc-03-nodeport-lb.png)
+
+### headless — DNS가 파드 IP를 직접 준다
+
+svc-headless.yaml(`clusterIP: None`)을 만들고 같은 파드 집합에 대해 DNS 조회를 비교했다:
+
+```bash
+kubectl run tmp --rm -it --restart=Never --image=busybox:1.36 -- sh -c \
+  "nslookup svc-clusterip.default.svc.cluster.local; nslookup svc-headless.default.svc.cluster.local"
+```
+
+- svc-clusterip → **10.110.89.188 하나** (가상 IP, 뒤에서 kube-proxy가 분배)
+- svc-headless → **10.244.2.3, 10.244.1.4 둘 다** (파드 IP 직접)
+
+같은 파드들인데 답이 다르다. headless는 "LB 거치지 말고 개별 파드에 직접 붙겠다"용 — StatefulSet+DB처럼 0번(프라이머리)을 지목해야 하는 상황의 재료. FQDN 형식 `서비스명.네임스페이스.svc.cluster.local`도 이 실습에서 눈에 익혀둠.
+
+![svc](images/svc-04-headless-dns.png)
+
+### ExternalName — 바깥 도메인의 별명
+
+```bash
+kubectl apply -f svc-extname.yaml    # externalName: www.google.com
+```
+
+get svc에 EXTERNAL-IP 자리에 www.google.com이 박히고, 클러스터 안에서 `svc-extname`을 조회하면 `canonical name = www.google.com`(CNAME)이 반환된다. selector도 endpoints도 없는 유일한 타입 — 용도는 "외부 RDS 주소를 클러스터 안에서 우리 이름으로 부르기". 나중에 RDS로 갈아탈 때 앱 설정 대신 Service만 바꾸면 된다.
+
+![svc](images/svc-05-extname.png)
+
+### Ingress — 컨트롤러 설치와 host 라우팅
+
+리소스만 만들면 아무 일도 안 일어난다 — 규칙을 실행할 컨트롤러부터:
+
+```bash
+minikube addons enable ingress
+kubectl get pods -n ingress-nginx
+```
+
+controller가 Running, admission-create/patch는 `Completed` — **오전에 배운 Job의 실물이 여기서 바로 재등장**(설치 시 한 번만 돌고 끝나는 작업). ingress-web.yaml은 `host: web.local` → svc-clusterip:80 규칙 하나.
+
+```bash
+curl -s -H "Host: web.local" http://192.168.49.2/ | grep -i title   # → Welcome to nginx!
+curl -s http://192.168.49.2/ | head -3                              # → 404 Not Found
+```
+
+**같은 IP인데 Host 헤더가 있으면 nginx, 없으면 404.** Ingress가 L7에서 host를 보고 분기한다는 걸 이 두 줄이 증명한다. /etc/hosts 안 건드리고 `-H "Host:"`로 테스트하는 트릭도 같이 확보.
+
+![ing](images/ing-01-addon-controller.png)
+![ing](images/ing-02-host-routing.png)
+
+### Label · Annotation · nodeSelector (9장)
+
+`--show-labels`를 쳐보니 내가 단 `app=web` 말고 **`pod-template-hash=c77955c54`가 자동으로** 붙어 있다 — 파드 이름 중간의 그 RS 해시가 label로도 달리는 것(롤링업데이트 때 신·구 RS가 파드를 안 섞는 장치). label 하나 달고 selector로 걸러보고, annotation과의 차이 확인:
+
+```bash
+kubectl label pod web-c77955c54-8wqf9 env=dev
+kubectl get pods -l env=dev                          # 그 파드만 나옴
+kubectl annotate pod web-c77955c54-8wqf9 owner=jsy   # describe에는 보이지만 -l로는 검색 불가
+```
+
+nodeSelector는 3노드라 실습이 제대로 된다. m02에만 `disk=ssd`를 달고 pod-nodeselector.yaml(`nodeSelector: {disk: ssd}`)을 던지면:
+
+```bash
+kubectl label node minikube-m02 disk=ssd
+kubectl get nodes -L disk        # m02에만 ssd 컬럼
+kubectl apply -f pod-nodeselector.yaml
+kubectl get pod pod-ssd -o wide  # NODE → minikube-m02
+```
+
+스케줄러가 라벨 조건에 맞는 노드로만 보낸다. 조건 맞는 노드가 없으면 Pending 무한 대기.
+
+![label](images/label-01-selector-annotation.png)
+![label](images/label-02-nodeselector.png)
+
+### ConfigMap — env와 volume 두 방식 (10장)
+
+```bash
+kubectl create configmap app-config --from-literal=APP_MODE=dev --from-literal=LOG_LEVEL=debug
+```
+
+pod-cm.yaml에서 같은 ConfigMap을 **두 방식으로 동시에** 주입했다: `envFrom`(key 전부가 환경변수로) + volume 마운트(/etc/config에 key가 파일명, value가 내용으로).
+
+```bash
+kubectl exec pod-cm -- sh -c "env | grep -e APP_MODE -e LOG_LEVEL"   # APP_MODE=dev, LOG_LEVEL=debug
+kubectl exec pod-cm -- ls /etc/config                                # APP_MODE  LOG_LEVEL
+kubectl exec pod-cm -- cat /etc/config/APP_MODE                      # dev
+```
+
+둘의 차이는 변경 반영 — volume은 수정하면 잠시 후 파일이 갱신되지만 env는 파드 재시작 전까지 그대로. 설정을 이미지 밖으로 빼는 이유(이미지 하나 + 환경별 ConfigMap)를 손으로 확인.
+
+![cm](images/cm-01-create-describe.png)
+![cm](images/cm-02-env-volume.png)
+
+### Secret — base64는 암호화가 아니다 (11장)
+
+```bash
+kubectl create secret generic db-secret --from-literal=DB_PASSWORD=p@ssw0rd123
+kubectl get secret db-secret -o jsonpath="{.data.DB_PASSWORD}"              # cEBzc3cwcmQxMjM=
+kubectl get secret db-secret -o jsonpath="{.data.DB_PASSWORD}" | base64 -d  # p@ssw0rd123
+```
+
+base64가 파이프 한 번에 원문으로 풀린다 — **인코딩이지 암호화가 아니다.** Secret yaml을 레포에 커밋하면 평문 노출과 같다는 것(PF3 웹훅 사고와 같은 유형). pod-secret.yaml로 env(`secretKeyRef`)와 volume 주입 둘 다 확인했고, 마운트 경로를 df로 찍어보니:
+
+```bash
+kubectl exec pod-secret -- df -h /etc/secret
+# Filesystem  ...  Mounted on
+# tmpfs       ...  /etc/secret
+```
+
+**tmpfs** — Secret 볼륨은 노드 디스크가 아니라 램에 얹힌다는 실물 증거까지 확인.
+
+![sec](images/sec-01-base64.png)
+![sec](images/sec-02-inject-tmpfs.png)
+
+실습 오브젝트 전부 삭제(deployment·svc 4종·ingress·pod 3종·cm·secret, m02의 disk 라벨도 제거). ingress 애드온은 다음 PF2 노출 실습에서 바로 쓸 거라 켜둔 채로 마감.
