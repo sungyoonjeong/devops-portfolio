@@ -644,4 +644,4 @@ job.batch/cj-date-29736764    Complete   1/1           3s         34s
 
 ![cj](images/cj-01-schedule-two-runs.png)
 
-실습 후 `kubectl delete -f`로 둘 다 삭제. 클러스터는 7장 Service 실습 이어가야 하니 그대로 둠.
+실습 후 `kubectl delete -f`로 둘 다 삭제. 
