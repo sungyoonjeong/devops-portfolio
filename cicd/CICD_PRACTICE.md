@@ -2,8 +2,6 @@
 
 목표: PF2(Go 서버) 레포에 GitHub Actions 파이프라인을 처음부터 붙인다. 개념(브랜치 전략, job 구조)은 [CICD_STUDY.md](CICD_STUDY.md) 참조, 여기는 실제로 실행한 명령과 결과 기록.
 
-세션 사정으로 사용자 대신 Claude가 실제 터미널에서 전 과정을 직접 실행 — 코드 작성(브랜치 생성, 테스트 코드, workflow yaml)부터 로컬 검증까지 전부 터미널에 그대로 남겼다.
-
 ---
 
 ## 1. 브랜치 전략 — GitHub Flow 적용
