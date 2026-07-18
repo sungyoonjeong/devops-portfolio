@@ -1,0 +1,113 @@
+# PF2 Go 서버 CI 파이프라인
+# 모노레포이므로 PortFolio/PF2/** 경로 변경이 있을 때만 실행 (다른 프로젝트 수정 시 불필요하게 안 돌게)
+name: PF2 CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "PortFolio/PF2/**"
+      - ".github/workflows/pf2-ci.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "PortFolio/PF2/**"
+
+# 모든 job의 기본 작업 디렉토리를 PF2 폴더로 고정 — step마다 working-directory 반복 안 써도 되게
+defaults:
+  run:
+    working-directory: PortFolio/PF2
+
+env:
+  IMAGE_NAME: pf2
+
+jobs:
+  # 1) lint: gofmt 포맷 검사 + go vet 정적 분석
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - name: gofmt 검사 (포맷 안 맞는 파일이 있으면 실패)
+        run: test -z "$(gofmt -l .)"
+      - name: go vet
+        run: go vet ./...
+
+  # 2) test: 단위 테스트 (main_test.go - TestHealthHandler, TestMetricsHandler)
+  test:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - name: go test
+        run: go test -v ./...
+
+  # 3) docker-build: 커밋 해시 태그로 이미지 빌드 (deploy.sh와 동일 태깅 전략 재사용)
+  docker-build:
+    runs-on: ubuntu-latest
+    needs: test
+    outputs:
+      tag: ${{ steps.vars.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: 커밋 해시 태그 생성
+        id: vars
+        run: echo "tag=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+      - name: docker build
+        run: docker build -t $IMAGE_NAME:${{ steps.vars.outputs.tag }} .
+      - name: 뒤 job에 이미지를 넘겨주기 위해 tar로 저장
+        run: docker save $IMAGE_NAME:${{ steps.vars.outputs.tag }} -o /tmp/pf2.tar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pf2-image
+          path: /tmp/pf2.tar
+
+  # 4) trivy-scan: deploy.sh의 trivy image 로직을 Actions job으로 이식
+  trivy-scan:
+    runs-on: ubuntu-latest
+    needs: docker-build
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: pf2-image
+          path: /tmp
+      - name: 이미지 로드
+        run: docker load -i /tmp/pf2.tar
+      - name: Trivy 스캔 (HIGH·CRITICAL만, 지금은 경고용 exit-code 0)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: pf2:${{ needs.docker-build.outputs.tag }}
+          severity: "HIGH,CRITICAL"
+          exit-code: "0"
+          # 프로덕션 전환 시 exit-code: "1"로 바꿔 취약점 발견 시 배포 자체를 막는 게 베스트 프랙티스
+
+  # 5) ecr-push: main 브랜치 push일 때만 실행, ECR 로그인 후 푸시
+  #    지금은 Secrets에 넣은 장기 액세스키 방식 - OIDC 키리스 인증은 PF1에서 정식 적용 예정 (보안 베스트 프랙티스로 남겨둠)
+  ecr-push:
+    runs-on: ubuntu-latest
+    needs: trivy-scan
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: pf2-image
+          path: /tmp
+      - name: 이미지 로드
+        run: docker load -i /tmp/pf2.tar
+      - name: AWS 자격증명 설정 (Secrets 방식)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-northeast-2
+      - name: ECR 로그인
+        uses: aws-actions/amazon-ecr-login@v2
+      - name: 태그 후 ECR로 푸시
+        run: |
+          docker tag $IMAGE_NAME:${{ needs.docker-build.outputs.tag }} ${{ secrets.ECR_REGISTRY }}/$IMAGE_NAME:${{ needs.docker-build.outputs.tag }}
+          docker push ${{ secrets.ECR_REGISTRY }}/$IMAGE_NAME:${{ needs.docker-build.outputs.tag }}
