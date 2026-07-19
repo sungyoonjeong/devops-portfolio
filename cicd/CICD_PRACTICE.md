@@ -472,34 +472,9 @@ X An error occurred trying to start process '/usr/bin/bash' with working directo
 
 `fix(pf2-ci): defaults.working-directory를 job 단위로 이동` 커밋으로 반영.
 
-### 버그 3 (번외) — `main.go`에 한 줄 주석을 추가하다 발생한 인코딩 사고
+실제 `push` 이벤트로 `ecr-push` job까지 검증하려면 `PortFolio/PF2/**` 경로에 진짜 변경이 있어야 해서, `main.go`에 검증 완료 주석 한 줄을 추가하고 다시 push했다.
 
-실제 push 트리거를 테스트하려고 `main.go`에 검증 완료 주석 한 줄을 추가하는 과정에서, `sed -i '1a\...'`로 긴 텍스트(한글 포함)를 터미널에 흘려 넣었더니 파일이 깨졌다:
-
-```bash
-$ cat -A PortFolio/PF2/main.go | head -3
-package main$
-// CI: .github/workflows/pf2-ci.yml (lint-M-mM-^LM-^LM-mM-^TM-^DM-...  # 깨진 바이트
-```
-
-![main.go 인코딩 깨짐](images/debug-03-maingo-encoding-bug.png)
-
-**원인**: GUI 자동화 도구(`win`)의 `type`/`paste` 명령은 텍스트 안의 리터럴 `\n`을 전부 "Enter 키 입력"으로 변환하는 사양이다(긴 텍스트 붙여넣기를 위한 의도된 기능). 그런데 Python 문자열 리터럴 안에 이스케이프 문자로 쓴 `\n`("이 줄바꿈 문자를 만들어라"는 의도)까지 전부 실제 Enter로 바뀌면서, 파이썬 코드 자체가 줄 중간에서 끊겨 `SyntaxError: unterminated string literal`이 나거나, sed 멀티라인 삽입이 깨졌다.
-
-**수정**: 텍스트 안에 리터럴 `\n`을 아예 쓰지 않는 방식으로 우회 — Python의 `readlines()`로 파일을 리스트로 읽고, 줄바꿈이 필요한 자리는 `\n` 대신 `chr(10)`(같은 문자를 문자 코드로 생성)을 써서 삽입했다.
-
-```python
-path = "PortFolio/PF2/main.go"
-with open(path, encoding="utf-8") as f:
-    lines = f.readlines()
-lines.insert(1, "// CI verified 2026-07-19" + chr(10))  # \n 대신 chr(10)
-with open(path, "w", encoding="utf-8") as f:
-    f.writelines(lines)
-```
-
-이 사고는 코드 자체의 버그가 아니라 **터미널 자동화 도구 사용법의 함정**이라 CI 개념과는 무관하지만, "짧은 명령은 잘 되다가 긴 텍스트 삽입에서만 이상하게 깨진다"는 패턴을 실제로 겪어본 기록으로 남겨둔다.
-
-### 버그 4 — `needs` 전이(transitive) 접근 불가로 ECR 태그가 빈 문자열이 됨
+### 버그 3 — `needs` 전이(transitive) 접근 불가로 ECR 태그가 빈 문자열이 됨
 
 **증상**: `lint`~`trivy-scan`까지 전부 성공했는데 `ecr-push`만 실패.
 
@@ -531,8 +506,8 @@ with open(path, "w", encoding="utf-8") as f:
     f.writelines(lines)
 ```
 
-![needs 전이 접근 불가 발견](images/debug-04-needs-transitive-bug.png)
-![수정 적용 확인](images/debug-04b-needs-fix-applied.png)
+![needs 전이 접근 불가 발견](images/debug-03-needs-transitive-bug.png)
+![수정 적용 확인](images/debug-03b-needs-fix-applied.png)
 
 `fix(pf2-ci): ecr-push job이 needs.docker-build.outputs.tag에 접근 못하던 버그 수정` 커밋으로 반영.
 
@@ -540,7 +515,7 @@ with open(path, "w", encoding="utf-8") as f:
 
 ## 8. 최종 검증 — 5-job 전부 그린 + 실제 ECR 이미지 확인
 
-버그 4개를 전부 고친 뒤, `main.go` 주석 커밋(push 이벤트 유발용)을 다시 push해 **실제 `push` 이벤트로** 파이프라인을 처음부터 끝까지 돌렸다(주의: `workflow_dispatch`로 돌리면 `ecr-push`의 `if: github.event_name == 'push'` 조건에 안 걸려 스킵되므로, 이 job까지 검증하려면 반드시 진짜 push가 필요하다).
+버그 3개를 전부 고친 뒤, `main.go` 주석 커밋(push 이벤트 유발용)을 다시 push해 **실제 `push` 이벤트로** 파이프라인을 처음부터 끝까지 돌렸다(주의: `workflow_dispatch`로 돌리면 `ecr-push`의 `if: github.event_name == 'push'` 조건에 안 걸려 스킵되므로, 이 job까지 검증하려면 반드시 진짜 push가 필요하다).
 
 ```bash
 $ gh run watch 29677091005 --repo sungyoonjeong/devops-portfolio --exit-status

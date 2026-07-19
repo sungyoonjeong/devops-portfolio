@@ -22,7 +22,7 @@
 | 프로젝트 | 기술 스택 | 설명 | 상태 |
 |---------|----------|------|------|
 | [PF-K8s — Kubernetes 앱 운영](PortFolio/PF-K8s/) | `Kubernetes` `Helm` `Ingress` `RBAC` `HPA` | Deployment·Service·Ingress·HPA·RBAC·NetworkPolicy + Helm 차트 패키징 | 🔄 진행 중 |
-| CI/CD 파이프라인 | `GitHub Actions` `ArgoCD` `Jenkins` `Trivy` | 빌드→테스트→취약점 스캔→푸시 CI + ArgoCD GitOps 배포 | 🔄 진행 중 |
+| [CI/CD 파이프라인](cicd/) | `GitHub Actions` `ArgoCD` `Jenkins` `Trivy` `ECR` | GitHub Flow + 5-job(lint→test→build→scan→push) CI 실그린 검증 완료 → ArgoCD GitOps 배포 예정 | 🔄 진행 중 |
 | 관측성 스택 | `Prometheus` `Grafana` `AlertManager` | 메트릭 수집·통합 대시보드·SLO·Slack 알림 | 🔄 진행 중 |
 | [**PF1 — End-to-End DevOps 파이프라인**](PortFolio/PF1/) | `GitHub Actions` `ArgoCD` `EKS` `Helm` `Terraform` `Prometheus` | 코드 push → CI → 이미지 빌드 → GitOps 자동배포(EKS) → 모니터링 (앱 전주기 통합) | 🔄 예정 |
 | [**★ 캡스톤 — 하이브리드 클라우드 신뢰성 플랫폼**](PortFolio/PF-Hybrid/) | `k3s(On-Prem)` `EKS(AWS)` `WireGuard` `ArgoCD` `Prometheus` `k6` | 온프렘 ↔ AWS 하이브리드 배포 + 장애 시 자동 페일오버 + **MTTR 실측** | 🔄 예정 |
