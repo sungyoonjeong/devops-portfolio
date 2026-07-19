@@ -8,6 +8,7 @@ on:
     paths:
       - "PortFolio/PF2/**"
       - ".github/workflows/pf2-ci.yml"
+  workflow_dispatch:  # 수동 트리거 - Secrets 등록 후 재검증 편의용
   pull_request:
     branches: [main]
     paths:
