@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: pf2
-        image: pf2:021c651         # PF2/deploy.sh와 동일하게 커밋 해시를 태그로 사용 (이미지-코드 1:1 추적)
+        image: pf2:6fb38d0         # PF2/deploy.sh와 동일하게 커밋 해시를 태그로 사용 (이미지-코드 1:1 추적)
         imagePullPolicy: Never     # 레지스트리에 없는 로컬 이미지 — Docker Hub에서 pull 시도하면 ImagePullBackOff 남
         ports:
         - containerPort: 8080      # main.go의 ListenAndServe(":8080")과 일치
