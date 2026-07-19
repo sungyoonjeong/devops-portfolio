@@ -258,8 +258,323 @@ YAML_OK
 
 ---
 
-## 4. 다음 단계
+## 4. ECR 레포지토리 + 최소권한 IAM 사용자 생성
 
-- `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `ECR_REGISTRY` GitHub Secrets 등록 후 실제 push로 5개 job 전부 그린 확인
-- CI/CD D2(7/18): 이 파이프라인 뒤에 ArgoCD를 붙여 GitOps로 전환 — `PortFolio/PF-K8s/k8s/*.yaml`이 그 대상이라 배포물 구조를 아침에 먼저 복습
-- PF1 단계에서 ecr-push job을 Secrets → OIDC 키리스 인증으로 교체
+7/17에는 워크플로 파일만 작성해두고 실제 Secrets 등록·그린 실행 검증은 미완이었다. 여기서부터 이어서, `ecr-push` job이 실제로 동작하도록 AWS 쪽 자원을 준비한다.
+
+**원칙: 이 WSL에 이미 연결된 AWS CLI 계정(`admin-sy`)은 관리자 권한이라 CI에 그대로 못 쓴다.** GitHub Secrets는 레포 관리자면 누구나 값을 재등록(덮어쓰기)할 수 있고, 워크플로 로그에 실수로라도 노출되면 그 즉시 계정 전체가 뚫린다. 그래서 **ECR push 한 가지 동작만 가능한 전용 IAM 사용자**를 새로 만들어 그 키만 등록한다 — 최소 권한 원칙(Principle of Least Privilege).
+
+### 4-1. ECR 레포지토리 생성 + 프리티어 보호용 lifecycle policy
+
+```bash
+$ aws ecr create-repository --repository-name pf2 --region ap-northeast-2 \
+    --image-scanning-configuration scanOnPush=true --output table
+--------------------------------------------------------------------------
+|                             CreateRepository                            |
++--------------------------------------------------------------------------+
+||                              repository                                ||
+|+---------------------------------------+--------------------------------+|
+||  repositoryArn   |  arn:aws:ecr:ap-northeast-2:759869090525:repository/pf2  ||
+||  repositoryName  |  pf2                                                 ||
+||  repositoryUri   |  759869090525.dkr.ecr.ap-northeast-2.amazonaws.com/pf2 ||
+```
+
+`--image-scanning-configuration scanOnPush=true`: 이미지가 push될 때마다 ECR이 자체적으로 취약점 스캔을 한 번 더 돌린다(Basic scanning은 무료) — Trivy(CI 단계)와 별개로 레지스트리 쪽에서도 상시 스캔되는 이중 방어.
+
+![ECR 레포 생성](images/ecr-01-repo-create.png)
+
+이미지를 계속 쌓아두면 무료 한도를 넘길 수 있어, **최신 5개만 남기고 자동 만료**시키는 lifecycle policy를 바로 걸었다:
+
+```bash
+$ aws ecr put-lifecycle-policy --repository-name pf2 --region ap-northeast-2 \
+    --lifecycle-policy-text '{"rules":[{"rulePriority":1,
+      "description":"free tier storage guard - keep last 5 images only",
+      "selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":5},
+      "action":{"type":"expire"}}]}'
+```
+
+![lifecycle policy 등록](images/ecr-02-lifecycle-policy.png)
+
+### 4-2. IAM 사용자 생성 — ECR push 전용, admin 키 사용 안 함
+
+```bash
+$ aws iam create-user --user-name pf2-ci-ecr-push --output table
+```
+
+![IAM 사용자 생성](images/iam-01-user-create.png)
+
+이 사용자에게 붙일 정책은 **딱 두 가지 권한만** 준다: 인증 토큰 발급(`GetAuthorizationToken`, 이 액션은 리소스를 특정 레포로 못 좁히는 AWS 구조상 제약이라 `Resource: "*"`가 불가피)과, **`pf2` 레포 ARN 하나에만 스코프**된 이미지 업로드 4종:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ECRAuthToken",
+      "Effect": "Allow",
+      "Action": "ecr:GetAuthorizationToken",
+      "Resource": "*"
+    },
+    {
+      "Sid": "ECRPushPF2Only",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:PutImage",
+        "ecr:InitiateLayerUpload",
+        "ecr:UploadLayerPart",
+        "ecr:CompleteLayerUpload"
+      ],
+      "Resource": "arn:aws:ecr:ap-northeast-2:759869090525:repository/pf2"
+    }
+  ]
+}
+```
+
+![IAM 정책 JSON 작성](images/iam-02-policy-json.png)
+
+```bash
+$ aws iam put-user-policy --user-name pf2-ci-ecr-push \
+    --policy-name pf2-ecr-push-only --policy-document file:///tmp/pf2-ecr-push-policy.json
+$ aws iam list-user-policies --user-name pf2-ci-ecr-push --output table
+```
+
+![정책 연결 확인](images/iam-03-policy-attached.png)
+
+이 사용자는 **읽기(pull)도, 다른 레포 접근도, ECR 외 다른 서비스도 전부 불가능** — 이 키가 통째로 유출돼도 공격자가 할 수 있는 일은 `pf2` 레포에 이미지 하나 올리는 것뿐이다. GitHub Actions 로그가 공개(public repo)라는 걸 감안하면 이 정도 격리가 최소 기준이라고 판단했다.
+
+### 4-3. 액세스 키 발급 — 시크릿 값은 화면에 절대 노출하지 않는다
+
+```bash
+$ aws iam create-access-key --user-name pf2-ci-ecr-push --output json > /tmp/pf2-ci-key.json
+$ chmod 600 /tmp/pf2-ci-key.json
+$ python3 -c "
+import json
+d = json.load(open('/tmp/pf2-ci-key.json'))['AccessKey']
+print('AccessKeyId  :', d['AccessKeyId'])
+print('SecretAccessKey: [REDACTED - /tmp/pf2-ci-key.json, chmod 600, GitHub Secrets 등록 후 즉시 삭제 예정]')
+"
+AccessKeyId  : AKIA3B252FLOUUTPE6RX
+SecretAccessKey: [REDACTED - /tmp/pf2-ci-key.json, chmod 600, GitHub Secrets 등록 후 즉시 삭제 예정]
+```
+
+![액세스 키 발급 (시크릿 값 redacted)](images/iam-04-accesskey-redacted.png)
+
+`AccessKeyId`는 그 자체로는 민감정보가 아니라(짝인 `SecretAccessKey`가 없으면 아무 것도 못 함) 화면에 남겨도 되지만, `SecretAccessKey`는 절대 터미널에 echo하거나 스크린샷에 남기지 않았다 — 파일에 `chmod 600`으로 저장해두고 다음 단계에서 바로 GitHub Secrets로 옮긴 뒤 로컬에서 완전히 삭제(`shred -u`)했다.
+
+---
+
+## 5. GitHub Secrets 등록
+
+```bash
+$ AWS_ACCESS_KEY_ID=$(python3 -c "import json;print(json.load(open('/tmp/pf2-ci-key.json'))['AccessKey']['AccessKeyId'])")
+$ AWS_SECRET_ACCESS_KEY=$(python3 -c "import json;print(json.load(open('/tmp/pf2-ci-key.json'))['AccessKey']['SecretAccessKey'])")
+$ gh secret set AWS_ACCESS_KEY_ID --repo sungyoonjeong/devops-portfolio --body "$AWS_ACCESS_KEY_ID"
+$ gh secret set AWS_SECRET_ACCESS_KEY --repo sungyoonjeong/devops-portfolio --body "$AWS_SECRET_ACCESS_KEY"
+$ gh secret set ECR_REGISTRY --repo sungyoonjeong/devops-portfolio --body "759869090525.dkr.ecr.ap-northeast-2.amazonaws.com"
+$ unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
+$ shred -u /tmp/pf2-ci-key.json
+$ gh secret list --repo sungyoonjeong/devops-portfolio
+AWS_ACCESS_KEY_ID      2026-07-19T...
+AWS_SECRET_ACCESS_KEY  2026-07-19T...
+ECR_REGISTRY            2026-07-19T...
+```
+
+![GitHub Secrets 등록 확인](images/secrets-01-registered.png)
+
+**값을 화면에 노출하지 않는 방법**: `gh secret set`은 값을 표준입력이 아니라 `--body` 인자로 받는데, 셸 변수(`"$AWS_ACCESS_KEY_ID"`)로 넘기면 그 변수 자체를 별도로 `echo`하지 않는 한 터미널 화면·스크린샷 어디에도 실제 값이 찍히지 않는다. `gh secret list`도 이름·등록일만 보여줄 뿐 값은 절대 되돌려주지 않는다(GitHub API 자체가 write-only로 설계됨) — 그래서 이 커밋된 스크린샷 어디에도 실제 키 값은 없다.
+
+---
+
+## 6. workflow_dispatch 수동 트리거 추가
+
+Secrets 등록 후 재검증할 때마다 코드를 억지로 바꿔 push하지 않아도 되도록, 워크플로에 수동 실행 트리거를 추가했다:
+
+```yaml
+on:
+  push:
+    branches: [main]
+    paths: ["PortFolio/PF2/**", ".github/workflows/pf2-ci.yml"]
+  pull_request:
+    branches: [main]
+    paths: ["PortFolio/PF2/**"]
+  workflow_dispatch:  # 수동 트리거 - Secrets 등록 후 재검증 편의용
+```
+
+![workflow_dispatch 추가](images/ci-03-workflow-dispatch-added.png)
+
+이 브랜치도 GitHub Flow대로 `feature/ci-manual-trigger` → PR 없이 바로 `--no-ff` 머지(1인 프로젝트라 리뷰어가 없어 PR을 안 거침, 리뷰어가 있다면 여기서 PR을 열어야 한다) → `main` push로 반영했다.
+
+```bash
+$ gh workflow run pf2-ci.yml --repo sungyoonjeong/devops-portfolio --ref main
+$ gh run watch <run-id> --repo sungyoonjeong/devops-portfolio --exit-status
+```
+
+---
+
+## 7. 실전 디버깅 — 그린 뜨기까지 만난 버그 3개
+
+"작성한 워크플로가 처음부터 한 번에 통과"하는 경우는 거의 없다. 실제로 이 파이프라인도 3번 실패하고서야 전부 통과했다 — 각각 원인이 달라서 그대로 기록해둔다. GitHub Actions 로그를 실제로 읽고 원인을 좁혀나가는 과정 자체가 CI/CD 실무의 핵심이라, 결과만 보여주지 않고 디버깅 흐름을 그대로 남긴다.
+
+### 버그 1 — `gofmt` 미적용 (lint 실패)
+
+**증상**: `workflow_dispatch`로 처음 실행하자 `lint` job이 바로 실패.
+
+```bash
+$ gh run view <run-id> --repo sungyoonjeong/devops-portfolio
+X lint in ...
+  X gofmt 검사 (포맷 안 맞는 파일이 있으면 실패)
+```
+
+**원인**: 어제(7/17) 로컬 검증 때 `gofmt -l .`(목록만 출력, 종료코드는 항상 0)만 썼고 `-w`(실제로 파일을 고치는 옵션)는 안 걸었다. 그래서 `main_test.go`는 스페이스 들여쓰기 그대로 커밋됐는데, CI의 lint job은 `test -z "$(gofmt -l .)"`로 **"포맷 안 맞는 파일이 하나라도 나오면 실패"**하게 짜여 있어서 정직하게 걸러졌다. 로컬 검증 스크립트와 CI 검증 스크립트가 미묘하게 다르면 이렇게 "로컬은 됐는데 CI는 실패"하는 흔한 사고가 난다.
+
+**수정**:
+
+```bash
+$ docker run --rm -v "$PWD/PortFolio/PF2":/app -w /app golang:1.22-alpine gofmt -w .
+$ docker run --rm -v "$PWD/PortFolio/PF2":/app -w /app golang:1.22-alpine gofmt -l .
+# (출력 없음 = 통과)
+```
+
+![gofmt 버그 발견·수정](images/debug-01-gofmt-bug-found-fixed.png)
+
+`fix(pf2): main_test.go gofmt 재포맷` 커밋으로 반영.
+
+### 버그 2 — `defaults.working-directory`가 워크플로 전체에 걸려 있던 문제 (trivy-scan·ecr-push 실행 불가)
+
+**증상**: 재실행하자 `lint`·`test`·`docker-build`는 통과했는데 `trivy-scan`이 바로 죽었다.
+
+```
+X An error occurred trying to start process '/usr/bin/bash' with working directory
+  '/home/runner/work/devops-portfolio/devops-portfolio/PortFolio/PF2'. No such file or directory
+```
+
+**원인**: 워크플로 최상단에 걸어둔 `defaults: run: working-directory: PortFolio/PF2`는 **워크플로 안의 모든 job, 모든 step에 상속**된다. 그런데 `trivy-scan`·`ecr-push` job은 소스 체크아웃을 아예 안 한다 — `docker-build`가 만든 이미지 tar만 아티팩트로 받아서 쓰기 때문이다. 그래서 이 두 job의 러너에는 `PortFolio/PF2`라는 디렉토리 자체가 존재하지 않고, 셸이 그 경로로 `cd`하려다 못 열어서 아예 뜨지도 못하고 죽었다.
+
+**교훈**: workflow-level `defaults`는 "이 워크플로의 모든 job이 공통으로 체크아웃한 소스를 다룬다"는 전제가 있을 때만 안전하다. job마다 체크아웃 여부가 다르면 job-level로 내려야 한다.
+
+**수정**: workflow-level `defaults` 제거 → `lint`/`test`/`docker-build`(checkout 있는 job) 3개에만 각각 job-level `defaults`를 걸었다.
+
+```yaml
+  lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: PortFolio/PF2   # 이 job에만 적용
+    steps:
+      - uses: actions/checkout@v4
+      ...
+
+  # trivy-scan, ecr-push는 checkout이 없으므로 working-directory 자체를 설정하지 않음
+```
+
+![defaults 범위를 job 단위로 이동](images/debug-02-workdir-scope-fix.png)
+
+`fix(pf2-ci): defaults.working-directory를 job 단위로 이동` 커밋으로 반영.
+
+### 버그 3 (번외) — `main.go`에 한 줄 주석을 추가하다 발생한 인코딩 사고
+
+실제 push 트리거를 테스트하려고 `main.go`에 검증 완료 주석 한 줄을 추가하는 과정에서, `sed -i '1a\...'`로 긴 텍스트(한글 포함)를 터미널에 흘려 넣었더니 파일이 깨졌다:
+
+```bash
+$ cat -A PortFolio/PF2/main.go | head -3
+package main$
+// CI: .github/workflows/pf2-ci.yml (lint-M-mM-^LM-^LM-mM-^TM-^DM-...  # 깨진 바이트
+```
+
+![main.go 인코딩 깨짐](images/debug-03-maingo-encoding-bug.png)
+
+**원인**: GUI 자동화 도구(`win`)의 `type`/`paste` 명령은 텍스트 안의 리터럴 `\n`을 전부 "Enter 키 입력"으로 변환하는 사양이다(긴 텍스트 붙여넣기를 위한 의도된 기능). 그런데 Python 문자열 리터럴 안에 이스케이프 문자로 쓴 `\n`("이 줄바꿈 문자를 만들어라"는 의도)까지 전부 실제 Enter로 바뀌면서, 파이썬 코드 자체가 줄 중간에서 끊겨 `SyntaxError: unterminated string literal`이 나거나, sed 멀티라인 삽입이 깨졌다.
+
+**수정**: 텍스트 안에 리터럴 `\n`을 아예 쓰지 않는 방식으로 우회 — Python의 `readlines()`로 파일을 리스트로 읽고, 줄바꿈이 필요한 자리는 `\n` 대신 `chr(10)`(같은 문자를 문자 코드로 생성)을 써서 삽입했다.
+
+```python
+path = "PortFolio/PF2/main.go"
+with open(path, encoding="utf-8") as f:
+    lines = f.readlines()
+lines.insert(1, "// CI verified 2026-07-19" + chr(10))  # \n 대신 chr(10)
+with open(path, "w", encoding="utf-8") as f:
+    f.writelines(lines)
+```
+
+이 사고는 코드 자체의 버그가 아니라 **터미널 자동화 도구 사용법의 함정**이라 CI 개념과는 무관하지만, "짧은 명령은 잘 되다가 긴 텍스트 삽입에서만 이상하게 깨진다"는 패턴을 실제로 겪어본 기록으로 남겨둔다.
+
+### 버그 4 — `needs` 전이(transitive) 접근 불가로 ECR 태그가 빈 문자열이 됨
+
+**증상**: `lint`~`trivy-scan`까지 전부 성공했는데 `ecr-push`만 실패.
+
+```
+Error parsing reference: "pf2:" is not a valid repository/tag: invalid reference format
+```
+
+이미지 이름이 `pf2:14e1f58`가 아니라 `pf2:`(태그가 빈 문자열)로 해석됐다.
+
+**원인**: `ecr-push` job은 `needs: trivy-scan`만 선언돼 있었다. `${{ needs.docker-build.outputs.tag }}`로 커밋 해시 태그를 참조하는 코드가 있었지만, **GitHub Actions는 `needs`가 직접 나열된 job의 output만 볼 수 있다 — 전이적으로(trivy-scan이 docker-build를 needs하니까 ecr-push도 자동으로 볼 수 있겠지, 라는) 접근은 지원하지 않는다.** `trivy-scan`은 `needs: docker-build`라 `needs.docker-build.outputs.tag`를 볼 수 있었지만(그래서 trivy-scan은 통과했다), `ecr-push`는 `docker-build`를 직접 `needs`하지 않았으므로 그 값이 애초에 정의되지 않은 컨텍스트였고, 빈 문자열로 평가됐다.
+
+**수정**: `ecr-push`의 `needs`에 `docker-build`를 추가(실행 순서 자체는 `trivy-scan`이 이미 `docker-build` 뒤에 오므로 안 바뀐다 — 순전히 output 접근 권한을 위한 추가):
+
+```yaml
+  ecr-push:
+    runs-on: ubuntu-latest
+    needs: [docker-build, trivy-scan]   # trivy-scan만으론 docker-build.outputs 접근 불가
+```
+
+```python
+# 인코딩 사고를 반복하지 않기 위해 readlines() + chr(10) 방식으로 안전하게 패치
+path = ".github/workflows/pf2-ci.yml"
+with open(path, encoding="utf-8") as f:
+    lines = f.readlines()
+for i, line in enumerate(lines):
+    if line.strip() == "needs: trivy-scan":
+        lines[i] = "    needs: [docker-build, trivy-scan]" + chr(10)
+with open(path, "w", encoding="utf-8") as f:
+    f.writelines(lines)
+```
+
+![needs 전이 접근 불가 발견](images/debug-04-needs-transitive-bug.png)
+![수정 적용 확인](images/debug-04b-needs-fix-applied.png)
+
+`fix(pf2-ci): ecr-push job이 needs.docker-build.outputs.tag에 접근 못하던 버그 수정` 커밋으로 반영.
+
+---
+
+## 8. 최종 검증 — 5-job 전부 그린 + 실제 ECR 이미지 확인
+
+버그 4개를 전부 고친 뒤, `main.go` 주석 커밋(push 이벤트 유발용)을 다시 push해 **실제 `push` 이벤트로** 파이프라인을 처음부터 끝까지 돌렸다(주의: `workflow_dispatch`로 돌리면 `ecr-push`의 `if: github.event_name == 'push'` 조건에 안 걸려 스킵되므로, 이 job까지 검증하려면 반드시 진짜 push가 필요하다).
+
+```bash
+$ gh run watch 29677091005 --repo sungyoonjeong/devops-portfolio --exit-status
+✓ lint in ...
+✓ test in ...
+✓ docker-build in 23s
+✓ trivy-scan in 21s
+✓ ecr-push in 19s
+  ✓ AWS 자격증명 설정 (Secrets 방식)
+  ✓ ECR 로그인
+  ✓ 태그 후 ECR로 푸시
+✓ Run PF2 CI (29677091005) completed with 'success'
+```
+
+![5개 job 전부 그린](images/final-01-5jobs-green.png)
+
+ECR에 이미지가 실제로 올라갔는지 AWS 쪽에서 직접 확인:
+
+```bash
+$ aws ecr list-images --repository-name pf2 --region ap-northeast-2 --output table
+-----------------------------------------------------------------------------------
+|                                   ListImages                                    |
++-----------------------------------------------------------------------------------+
+|  imageDigest: sha256:c6bb5d52b5f60f556281f4be61952a208f8ba0dc61cd5ca7e9cb2083f8519eba9  |  imageTag: 14e1f58  |
+```
+
+![ECR 이미지 실제 확인](images/final-02-ecr-image-verified.png)
+
+`imageTag: 14e1f58`가 그 push를 만든 머지 커밋의 짧은 해시와 정확히 일치 — `deploy.sh`(로컬 배포)와 `pf2-ci.yml`(CI 배포) 양쪽에서 동일한 "커밋 해시 = 이미지 태그" 규칙이 실제로 지켜지는 것까지 확인됐다.
+
+---
+
+## 9. 다음 단계
+
+- CI/CD D2: 이 파이프라인 뒤에 ArgoCD를 붙여 GitOps로 전환 — `PortFolio/PF-K8s/k8s/*.yaml`이 그 대상이라 배포물 구조를 먼저 복습
+- PF1 단계에서 `ecr-push` job을 Secrets(장기 액세스키) → OIDC 키리스 인증으로 교체 (지금의 `pf2-ci-ecr-push` IAM 사용자도 그때 삭제하고, GitHub OIDC 신뢰관계를 신뢰하는 IAM 역할(Role)로 대체)
+- ECR lifecycle policy(최근 5개 유지)가 실제로 오래된 이미지를 정리하는지, push를 몇 번 더 하면서 확인
