@@ -22,10 +22,10 @@
 | 프로젝트 | 기술 스택 | 설명 | 상태 |
 |---------|----------|------|------|
 | [PF-K8s — Kubernetes 앱 운영](PortFolio/PF-K8s/) | `Kubernetes` `Helm` `Ingress` `RBAC` `HPA` | Deployment·Service·Ingress·HPA·RBAC·NetworkPolicy + Helm 차트 패키징 | 🔄 진행 중 |
-| [CI/CD 파이프라인](cicd/) | `GitHub Actions` `Jenkins` `Trivy` `ECR` | GitHub Flow + 5-job(lint→test→build→scan→push) CI 실그린 검증 완료 | 🔄 진행 중 |
+| [CI/CD 파이프라인](cicd/) | `GitHub Actions` `Trivy` `ECR` | GitHub Flow + 5-job(lint→test→build→scan→push) CI 실그린 검증 완료 | 🔄 진행 중 |
 | [ArgoCD GitOps](argocd/) | `ArgoCD` `Kubernetes` | PF2 K8s 리소스를 Git 기준 자동 동기화로 전환, selfHeal·자동배포 실증 완료 | 🔄 진행 중 |
 | [Observability](observability/) | `Prometheus` `Grafana` `AlertManager` | PF2 `/metrics` Prometheus 연동, 대시보드 1개·알람 2종 실발동 검증 완료 | 🔄 진행 중 |
-| 관측성 스택 | `Prometheus` `Grafana` `AlertManager` | 메트릭 수집·통합 대시보드·SLO·Slack 알림 | 🔄 진행 중 |
+| [Jenkins](jenkins/) | `Jenkins` `Docker` `Groovy` | 같은 PF2 파이프라인을 Jenkins로 재현, GitHub Actions와 직접 비교(관리형 vs 직접호스팅) | 🔄 진행 중 |
 | [**PF1 — End-to-End DevOps 파이프라인**](PortFolio/PF1/) | `GitHub Actions` `ArgoCD` `EKS` `Helm` `Terraform` `Prometheus` | 코드 push → CI → 이미지 빌드 → GitOps 자동배포(EKS) → 모니터링 (앱 전주기 통합) | 🔄 예정 |
 | [**★ 캡스톤 — 하이브리드 클라우드 신뢰성 플랫폼**](PortFolio/PF-Hybrid/) | `k3s(On-Prem)` `EKS(AWS)` `WireGuard` `ArgoCD` `Prometheus` `k6` | 온프렘 ↔ AWS 하이브리드 배포 + 장애 시 자동 페일오버 + **MTTR 실측** | 🔄 예정 |
 
@@ -70,6 +70,7 @@ k8s/         따배쿠 입문 1~11장 + minikube 3노드 실습 — Pod·Control
 cicd/        GitHub Actions 5-job CI — 브랜치 전략·lint·test·docker-build·trivy-scan·ecr-push 실그린 검증
 argocd/      ArgoCD GitOps — Application 등록·selfHeal·Git→클러스터 자동 동기화 실증
 observability/ Prometheus+Grafana+AlertManager — PF2 /metrics 연동·대시보드·알람 규칙
+jenkins/     Jenkins 설치+PF2 파이프라인 재현 — GitHub Actions와 구조 비교, DooD 함정
 python/      자료구조 38챕터 — 연결리스트·트리·힙·AVL·BIT·Red-Black Tree
 코딩테스트/   프로그래머스 Level 1 완료 (64문제+) → Level 2 진행 중
 기술면접/     면접 예상질문 Q&A + 리눅스 트러블슈팅 실습 기록
