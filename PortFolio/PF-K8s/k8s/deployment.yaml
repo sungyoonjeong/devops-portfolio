@@ -26,7 +26,7 @@ spec:
             memory: 32Mi
           limits:                  # 초과 시 CPU는 throttle, 메모리는 OOMKilled
             cpu: 200m
-            memory: 64Mi
+            memory: 96Mi
         readinessProbe:            # 실패하면 Service 트래픽에서만 제외 (재시작 없음) — 워밍업 보호
           httpGet:
             path: /health          # main.go의 healthHandler
