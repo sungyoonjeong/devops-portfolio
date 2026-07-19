@@ -1,0 +1,61 @@
+// Jenkinsfile — PF2용 파이프라인. GitHub Actions(.github/workflows/pf2-ci.yml)의 lint→test→docker-build
+// 3단계를 Jenkins Declarative Pipeline으로 동일하게 재현해서 두 도구를 직접 비교해본다.
+// (trivy-scan·ecr-push는 이번 비교 실습 범위 밖 — 개념 비교가 목적이라 앞 3단계만으로 충분)
+pipeline {
+    agent any   // 어느 노드(에이전트)에서 실행할지 - "아무 데서나"(지금은 컨트롤러 자신 1대뿐)
+
+    // GitHub Actions의 env: 와 동일한 역할 - 파이프라인 전체에서 쓰는 변수
+    environment {
+        IMAGE_NAME = "pf2"
+    }
+
+    stages {
+        // GitHub Actions의 job 하나하나가 여기서는 stage 하나하나에 대응한다
+        stage('Checkout') {
+            steps {
+                // GitHub Actions의 actions/checkout@v4 와 동일한 역할
+                git branch: 'main', url: 'https://github.com/sungyoonjeong/devops-portfolio.git'
+            }
+        }
+
+        stage('Lint') {
+            steps {
+                dir('PortFolio/PF2') {
+                    // GitHub Actions와 완전히 동일한 명령 재사용 - golang:1.22-alpine 컨테이너로 gofmt+vet
+                    sh '''
+                        docker run --rm -v "$PWD":/app -w /app golang:1.22-alpine \
+                            sh -c "test -z \\"\\$(gofmt -l .)\\" && go vet ./..."
+                    '''
+                }
+            }
+        }
+
+        stage('Test') {
+            steps {
+                dir('PortFolio/PF2') {
+                    sh '''
+                        docker run --rm -v "$PWD":/app -w /app golang:1.22-alpine \
+                            sh -c "go test -v ./..."
+                    '''
+                }
+            }
+        }
+
+        stage('Docker Build') {
+            steps {
+                dir('PortFolio/PF2') {
+                    // GIT_COMMIT은 checkout 단계가 자동으로 채워주는 내장 변수 - GitHub Actions의
+                    // git rev-parse --short HEAD를 직접 안 쳐도 됨(Jenkins가 checkout 시점에 자동 제공)
+                    sh 'docker build -t $IMAGE_NAME:${GIT_COMMIT.take(7)} .'
+                }
+            }
+        }
+    }
+
+    post {
+        // GitHub Actions에는 없는 Jenkins만의 개념 - 파이프라인 성공/실패와 무관하게(또는 조건부로) 항상 실행
+        always {
+            echo "빌드 번호 #${env.BUILD_NUMBER} 종료 - 결과: ${currentBuild.currentResult}"
+        }
+    }
+}
