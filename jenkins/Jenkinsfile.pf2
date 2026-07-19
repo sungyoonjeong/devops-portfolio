@@ -21,11 +21,11 @@ pipeline {
         stage('Lint') {
             steps {
                 dir('PortFolio/PF2') {
-                    // GitHub Actions와 완전히 동일한 명령 재사용 - golang:1.22-alpine 컨테이너로 gofmt+vet
-                    sh '''
-                        docker run --rm -v "$PWD":/app -w /app golang:1.22-alpine \
-                            sh -c "test -z \\"\\$(gofmt -l .)\\" && go vet ./..."
-                    '''
+                    // sh 스텝 안에서 docker run ... sh -c "..." 처럼 따옴표를 두 겹으로 중첩시키면
+                    // Groovy 문자열 이스케이프와 셸 이스케이프가 서로 꼬여서 깨지기 쉽다(실제로 겪음).
+                    // 그래서 "하나의 sh 스텝 = docker run 명령 하나"로 쪼개 중첩 따옴표 자체를 없앴다.
+                    sh 'docker run --rm -v $PWD:/app -w /app golang:1.22-alpine gofmt -l .'
+                    sh 'docker run --rm -v $PWD:/app -w /app golang:1.22-alpine go vet ./...'
                 }
             }
         }
@@ -33,10 +33,7 @@ pipeline {
         stage('Test') {
             steps {
                 dir('PortFolio/PF2') {
-                    sh '''
-                        docker run --rm -v "$PWD":/app -w /app golang:1.22-alpine \
-                            sh -c "go test -v ./..."
-                    '''
+                    sh 'docker run --rm -v $PWD:/app -w /app golang:1.22-alpine go test -v ./...'
                 }
             }
         }
@@ -44,9 +41,9 @@ pipeline {
         stage('Docker Build') {
             steps {
                 dir('PortFolio/PF2') {
-                    // GIT_COMMIT은 checkout 단계가 자동으로 채워주는 내장 변수 - GitHub Actions의
-                    // git rev-parse --short HEAD를 직접 안 쳐도 됨(Jenkins가 checkout 시점에 자동 제공)
-                    sh 'docker build -t $IMAGE_NAME:${GIT_COMMIT.take(7)} .'
+                    // GIT_COMMIT은 checkout 단계가 자동으로 채워주는 Jenkins 내장 환경변수 - GitHub Actions처럼
+                    // git rev-parse --short HEAD를 직접 안 쳐도 됨. 자르기(7자)는 셸에서 처리(Groovy 보간 안 씀)
+                    sh 'docker build -t $IMAGE_NAME:$(echo $GIT_COMMIT | cut -c1-7) .'
                 }
             }
         }
