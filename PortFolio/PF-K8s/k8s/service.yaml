@@ -2,6 +2,9 @@ apiVersion: v1                     # Service는 core v1 그룹
 kind: Service
 metadata:
   name: pf2-svc                    # Ingress의 backend.service.name이 이 이름을 참조
+  labels:
+    app: pf2                       # Service "자기 자신"에 붙는 라벨 - ServiceMonitor.spec.selector가 보는 건 이 라벨
+                                    # (바로 아래 spec.selector는 트래픽을 보낼 "파드"를 고르는 라벨이라 서로 다른 용도)
 spec:
   selector:
     app: pf2                       # 이 라벨 달린 파드 전부가 트래픽 분배 대상 (Deployment의 파드 라벨과 매치)
