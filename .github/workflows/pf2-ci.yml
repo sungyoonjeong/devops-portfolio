@@ -8,24 +8,23 @@ on:
     paths:
       - "PortFolio/PF2/**"
       - ".github/workflows/pf2-ci.yml"
-  workflow_dispatch:  # 수동 트리거 - Secrets 등록 후 재검증 편의용
   pull_request:
     branches: [main]
     paths:
       - "PortFolio/PF2/**"
-
-# 모든 job의 기본 작업 디렉토리를 PF2 폴더로 고정 — step마다 working-directory 반복 안 써도 되게
-defaults:
-  run:
-    working-directory: PortFolio/PF2
+  workflow_dispatch:  # 수동 트리거 - Secrets 등록 후 재검증 편의용
 
 env:
   IMAGE_NAME: pf2
 
 jobs:
   # 1) lint: gofmt 포맷 검사 + go vet 정적 분석
+  # checkout으로 소스를 받아오는 job이라 여기서만 working-directory를 PF2로 고정
   lint:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: PortFolio/PF2
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -40,6 +39,9 @@ jobs:
   test:
     runs-on: ubuntu-latest
     needs: lint
+    defaults:
+      run:
+        working-directory: PortFolio/PF2
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -52,6 +54,9 @@ jobs:
   docker-build:
     runs-on: ubuntu-latest
     needs: test
+    defaults:
+      run:
+        working-directory: PortFolio/PF2
     outputs:
       tag: ${{ steps.vars.outputs.tag }}
     steps:
@@ -69,6 +74,9 @@ jobs:
           path: /tmp/pf2.tar
 
   # 4) trivy-scan: deploy.sh의 trivy image 로직을 Actions job으로 이식
+  # 이 job은 checkout을 하지 않는다(소스가 아니라 docker-build가 만든 이미지 tar만 필요) -
+  # 그래서 PF2 폴더 자체가 워크스페이스에 없다. working-directory를 여기 걸면
+  # "No such file or directory"로 셸이 뜨지도 못하고 죽는다 (실제로 겪은 버그)
   trivy-scan:
     runs-on: ubuntu-latest
     needs: docker-build
@@ -89,6 +97,7 @@ jobs:
 
   # 5) ecr-push: main 브랜치 push일 때만 실행, ECR 로그인 후 푸시
   #    지금은 Secrets에 넣은 장기 액세스키 방식 - OIDC 키리스 인증은 PF1에서 정식 적용 예정 (보안 베스트 프랙티스로 남겨둠)
+  #    이 job도 checkout 없음 - 위 trivy-scan과 동일한 이유로 working-directory 미설정
   ecr-push:
     runs-on: ubuntu-latest
     needs: trivy-scan
