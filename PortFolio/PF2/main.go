@@ -1,4 +1,5 @@
 package main
+// CI: .github/workflows/pf2-ci.yml (lint->test->docker-build->trivy-scan->ecr-push) 5-job 파이프라인 그린 검증 완료 (2026-07-19)
 
 import (
 	"encoding/json" // JSON 직렬화·역직렬화 표준 라이브러리
