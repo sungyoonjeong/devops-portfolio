@@ -1,0 +1,37 @@
+# PrometheusRule - "이런 조건이면 알람을 울려라"를 정의하는 CRD
+# kube-prometheus-stack의 Prometheus는 release: kube-prometheus-stack 라벨이 붙은
+# PrometheusRule만 자동으로 로드하도록 설정돼 있다 (ServiceMonitor와 같은 패턴)
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: pf2-alerts
+  namespace: default
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: pf2.rules
+      rules:
+        # PF2Down: pf2-svc로 스크레이핑되는 "특정 인스턴스"가 응답 없을 때 발동
+        # (일부 파드만 죽고 나머지는 살아있는 경우 - up 시계열 자체는 존재하고 값만 0)
+        - alert: PF2Down
+          expr: up{job="pf2-svc"} == 0
+          for: 30s
+          labels:
+            severity: critical
+          annotations:
+            summary: "PF2 인스턴스 응답 없음 ({{ $labels.instance }})"
+            description: "pf2-svc의 {{ $labels.instance }}가 30초 이상 /metrics 스크레이핑에 응답하지 않았다."
+
+        # PF2Absent: pf2-svc 대상 자체가 통째로 사라졌을 때 발동 (전체 장애)
+        # 파드가 0개면 Prometheus service discovery가 스크레이핑할 대상 자체를 못 찾아서
+        # up{job="pf2-svc"} 시계열이 아예 존재하지 않는다 - 그래서 위 PF2Down(==0 비교)로는
+        # "전멸" 상황을 못 잡는다. absent()는 "이 시계열이 하나도 없다"를 직접 감지한다.
+        - alert: PF2Absent
+          expr: absent(up{job="pf2-svc"})
+          for: 30s
+          labels:
+            severity: critical
+          annotations:
+            summary: "PF2가 Prometheus에서 완전히 사라짐"
+            description: "pf2-svc를 스크레이핑하는 대상이 30초 이상 하나도 없다 - 전체 파드가 다운됐을 가능성."
