@@ -1,0 +1,23 @@
+# ArgoCD Application - PF2를 GitOps 방식으로 관리하겠다는 선언
+# 이 리소스 자체는 kubectl apply로 한 번만 넣는다 - 그 뒤로는 PortFolio/PF-K8s/k8s/의
+# YAML을 고쳐서 git push하면 ArgoCD가 알아서 클러스터에 반영한다 (kubectl apply를 다시 안 쳐도 됨)
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: pf2
+  namespace: argocd              # Application 리소스는 항상 argocd 네임스페이스에 둔다
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/sungyoonjeong/devops-portfolio.git
+    targetRevision: main
+    path: PortFolio/PF-K8s/k8s   # 이 경로의 deployment.yaml/service.yaml/ingress.yaml을 감시
+  destination:
+    server: https://kubernetes.default.svc   # ArgoCD가 떠 있는 이 클러스터 자신
+    namespace: default
+  syncPolicy:
+    automated:
+      prune: true                # Git에서 파일이 사라지면 클러스터에서도 삭제
+      selfHeal: true              # 클러스터를 수동으로 고쳐도 Git 상태로 되돌림
+    syncOptions:
+      - CreateNamespace=true
