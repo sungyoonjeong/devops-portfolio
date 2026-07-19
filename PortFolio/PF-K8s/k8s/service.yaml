@@ -6,6 +6,8 @@ spec:
   selector:
     app: pf2                       # 이 라벨 달린 파드 전부가 트래픽 분배 대상 (Deployment의 파드 라벨과 매치)
   ports:
-  - port: 80                       # Service 자신이 여는 포트 — 클러스터 안에서 pf2-svc:80으로 접근
+  - name: http                     # 포트 이름 - ServiceMonitor(observability/manifests/pf2-servicemonitor.yaml)가
+                                    # 이 이름으로 스크레이핑 대상 포트를 지정하기 때문에 반드시 필요
+    port: 80                       # Service 자신이 여는 포트 — 클러스터 안에서 pf2-svc:80으로 접근
     targetPort: 8080                # 실제 트래픽이 도착하는 컨테이너 포트 (main.go의 8080)
                                     # type 생략 = ClusterIP 기본값(클러스터 내부 전용, 외부 노출은 Ingress가 담당)
