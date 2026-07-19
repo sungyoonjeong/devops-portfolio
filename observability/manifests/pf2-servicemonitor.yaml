@@ -1,0 +1,18 @@
+# ServiceMonitor - Prometheus Operator에게 "이 Service를 스크레이핑 대상에 추가해라"고 알려주는 CRD
+# kube-prometheus-stack이 설치한 Prometheus는 release: kube-prometheus-stack 라벨이 붙은
+# ServiceMonitor만 자동으로 인식하도록 설정돼 있다 (serviceMonitorSelector.matchLabels)
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: pf2
+  namespace: default
+  labels:
+    release: kube-prometheus-stack   # 이 라벨이 없으면 Prometheus가 이 ServiceMonitor를 무시한다
+spec:
+  selector:
+    matchLabels:
+      app: pf2                        # pf2-svc의 라벨과 일치해야 스크레이핑 대상으로 잡힘
+  endpoints:
+    - port: http                      # Service의 포트 이름(아래에서 pf2-svc에 이름을 붙여줘야 함)
+      path: /metrics                  # 스크레이핑할 경로
+      interval: 15s                   # 15초마다 한 번씩 /metrics를 호출해 값을 가져간다
