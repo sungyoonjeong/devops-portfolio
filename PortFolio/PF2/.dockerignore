@@ -1,0 +1,27 @@
+# 빌드 컨텍스트에서 제외할 것들 - Go 소스와 의존성 정의만 있으면 빌드된다
+# 이게 없으면 COPY . . 가 아래 것들을 전부 이미지 빌드에 끌고 들어간다
+# (특히 bin/trivy는 161MB짜리 바이너리라 빌드 컨텍스트 전송만으로도 느려진다)
+
+# 로컬에 받아둔 trivy 실행파일 (.gitignore에도 있음)
+bin/
+
+# trivy 스캔 결과 JSON - 빌드 산출물과 무관
+trivy-reports/
+
+# 컴파일된 바이너리 - 이미지 안에서 다시 빌드하므로 불필요
+server
+
+# 배포 스크립트 - 호스트에서 실행하는 것이라 이미지에 들어갈 이유가 없음
+deploy.sh
+
+# 문서 - 실행에 필요 없음
+*.md
+
+# 런타임 설정 (nginx는 compose가 호스트에서 직접 마운트하므로 이미지에 불필요)
+nginx/
+docker-compose.yml
+
+# 도커 관련 메타파일
+Dockerfile
+.dockerignore
+.gitignore
