@@ -1,5 +1,11 @@
 # Observability 실습 — Prometheus + Grafana + AlertManager
 
+> **수행 범위에 대한 정직한 기록**
+> Helm 설치와 매니페스트 작성 과정을 AI 도구의 도움을 받아 진행했습니다.
+> 다만 `up == 0`으로는 잡히지 않는 상황을 `absent()`로 잡아야 한다는 것은
+> 직접 파드를 내려 보며 확인한 내용입니다.
+> **전체를 스스로 구성할 수 있는 수준까지는 다시 학습이 필요합니다.**
+
 이 레포 DevOps 파이프라인 3부작의 마지막 — [`../cicd/`](../cicd/)(빌드) → [`../argocd/`](../argocd/)(배포) → **여기(관측)**. PF2에 실제 지표를 붙이고, 그 지표를 대시보드로 보고, 장애가 나면 알람이 울리는 것까지 전 과정을 minikube에서 검증했다.
 
 이론은 `OBSERVABILITY_STUDY.md`(관측성이 뭔지부터), 실습 기록은 `OBSERVABILITY_PRACTICE.md`.

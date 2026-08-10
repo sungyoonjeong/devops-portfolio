@@ -1,5 +1,10 @@
 # CI/CD 실습
 
+> **수행 범위에 대한 정직한 기록**
+> 파이프라인 설계·YAML 작성과 실행 과정 상당 부분을 AI 도구의 도움을 받아 진행했습니다.
+> 실제로 그린이 뜬 것과 ECR에 이미지가 올라간 것은 사실이지만,
+> **직접 처음부터 작성해 본 경험으로는 부족하다고 판단해 다시 학습 중**입니다.
+
 GitHub Actions로 PF2(Go 서버)에 5-job 파이프라인을 붙이는 연습. 브랜치 전략(GitHub Flow)부터 lint→test→docker-build→trivy-scan→ecr-push까지, 실제로 그린 뜨는 것까지 확인했다.
 
 이론 정리는 `CICD_STUDY.md`, 실습 기록(명령·출력·스크린샷)은 `CICD_PRACTICE.md`.

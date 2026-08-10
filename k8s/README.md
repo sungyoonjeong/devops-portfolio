@@ -1,5 +1,10 @@
 # Kubernetes 학습
 
+> **수행 범위에 대한 정직한 기록**
+> 1~5장(아키텍처·Pod·Controller)은 강의를 보며 직접 실습했습니다.
+> 6~11장(Service·Ingress·ConfigMap·Secret) 실습은 AI 도구의 도움을 받아 진행한 부분이 많아
+> **스스로 재현할 수 있는지 다시 확인하며 학습 중**입니다.
+
 따배쿠 입문 강의(1~11장) 기준 개념 정리 + minikube 3노드 클러스터에서 직접 실습. 이론은 `K8S_STUDY.md`, 실습 기록(명령·결과·스크린샷)은 `PRACTICE.md`, 최초 환경 구축은 `SETUP.md`.
 
 ## 구성

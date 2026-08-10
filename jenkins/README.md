@@ -1,5 +1,10 @@
 # Jenkins 실습
 
+> **수행 범위에 대한 정직한 기록**
+> 설치와 Jenkinsfile 작성을 AI 도구의 도움을 받아 진행했습니다.
+> GitHub Actions와의 구조 비교는 이해하고 있으나,
+> **Jenkins 자체를 다뤄 본 경험은 이 한 번뿐입니다.**
+
 CI/CD 시리즈의 곁가지 — [`../cicd/`](../cicd/)에서 GitHub Actions로 만든 것과 똑같은 lint→test→docker-build 파이프라인을 Jenkins로도 만들어서 두 도구를 직접 비교했다. Jenkins는 이번이 처음이라 설치부터 시작.
 
 이론은 `JENKINS_STUDY.md`(Jenkins가 뭔지부터, GitHub Actions와 비교), 실습 기록은 `JENKINS_PRACTICE.md`.
