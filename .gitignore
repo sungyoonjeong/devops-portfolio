@@ -27,3 +27,11 @@ Network/network-project1/myserver_partB
 __pycache__/
 *.pyc
 .DS_Store
+
+# AI 어시스턴트 설정·지침 (공개 대상 아님)
+CLAUDE.md
+AGENTS.md
+GEMINI.md
+.claude/
+.mcp.json
+.cursor/
